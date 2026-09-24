@@ -78,132 +78,133 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b0d13] text-slate-200 flex flex-col items-center px-4 py-14 sm:py-20">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
       
-      {/* Header */}
-      <header className="w-full max-w-xl text-center mb-12 animate-fade-in">
-        <div className="inline-flex items-center gap-2 px-3 py-1 mb-5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-medium">
-          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
-          Multi-plateformes
-        </div>
-        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-white">
-          Downloader
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">
-            {" "}propre
+      {/* ===== HEADER ===== */}
+      <header className="border-b border-slate-200 bg-white">
+        <div className="max-w-5xl mx-auto px-4 py-5 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center">
+              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            </div>
+            <span className="font-bold text-lg tracking-tight">Downloader</span>
+          </div>
+          <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
+            Gratuit & sans pub
           </span>
-        </h1>
-        <p className="mt-3 text-slate-400 text-sm sm:text-base">
-          YouTube, TikTok, Instagram, Twitter… sans pub
-        </p>
+        </div>
       </header>
 
-      {/* Input */}
-      <div className="w-full max-w-xl animate-fade-in" style={{ animationDelay: "0.1s" }}>
-        <div className="relative group">
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-violet-500 rounded-2xl opacity-0 group-hover:opacity-20 blur transition duration-500"></div>
-          <div className="relative flex items-center bg-[#12151f] border border-[#1e2433] rounded-2xl overflow-hidden focus-within:border-indigo-500/60 transition-colors">
-            <input
-              ref={inputRef}
-              type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              onPaste={handlePaste}
-              onKeyDown={(e) => e.key === "Enter" && analyze()}
-              placeholder="Colle un lien ici..."
-              className="flex-1 bg-transparent px-5 py-4 text-white placeholder-slate-500 focus:outline-none text-[15px]"
-            />
-            <button
-              onClick={() => analyze()}
-              disabled={analyzing || !url.trim()}
-              className="m-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-400 text-white text-sm font-medium transition-all active:scale-95"
-            >
-              {analyzing ? (
-                <span className="flex items-center gap-2">
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                  </svg>
-                </span>
-              ) : (
-                "Analyser"
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* ===== HERO ===== */}
+      <section className="max-w-3xl mx-auto px-4 pt-14 pb-10 text-center animate-fade-in">
+        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900 leading-tight">
+          Télécharge tes vidéos
+          <span className="block text-indigo-600">simplement et rapidement</span>
+        </h1>
+        <p className="mt-5 text-slate-600 text-lg max-w-xl mx-auto leading-relaxed">
+          Colle un lien YouTube, TikTok, Instagram, Twitter ou Reddit et télécharge 
+          la vidéo ou l’audio en un clic. Aucune publicité, aucune redirection.
+        </p>
+      </section>
 
-      {/* Erreur */}
-      {error && (
-        <div className="w-full max-w-xl mt-6 animate-scale-in">
-          <div className="bg-red-500/10 border border-red-500/20 text-red-300 rounded-xl px-5 py-3.5 text-sm flex items-center gap-3">
+      {/* ===== SEARCH BOX ===== */}
+      <section className="max-w-2xl mx-auto px-4 animate-fade-in" style={{ animationDelay: "0.1s" }}>
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 flex items-center gap-2 focus-within:ring-2 focus-within:ring-indigo-500/30 focus-within:border-indigo-400 transition">
+          <input
+            ref={inputRef}
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onPaste={handlePaste}
+            onKeyDown={(e) => e.key === "Enter" && analyze()}
+            placeholder="Colle un lien YouTube, TikTok, Instagram..."
+            className="flex-1 px-4 py-3.5 text-[15px] bg-transparent placeholder-slate-400 focus:outline-none"
+          />
+          <button
+            onClick={() => analyze()}
+            disabled={analyzing || !url.trim()}
+            className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:text-slate-500 text-white text-sm font-semibold transition active:scale-95"
+          >
+            {analyzing ? (
+              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+            ) : (
+              "Analyser"
+            )}
+          </button>
+        </div>
+
+        {/* Erreur */}
+        {error && (
+          <div className="mt-4 animate-scale-in bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-3.5 text-sm flex items-center gap-3">
             <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             {error}
           </div>
-        </div>
-      )}
+        )}
+      </section>
 
-      {/* Skeleton */}
+      {/* ===== SKELETON ===== */}
       {analyzing && (
-        <div className="w-full max-w-xl mt-10 animate-scale-in">
-          <div className="bg-[#12151f] rounded-2xl border border-[#1e2433] overflow-hidden">
-            <div className="aspect-video bg-[#1a1e2b] animate-pulse" />
+        <div className="max-w-2xl mx-auto px-4 mt-10 animate-scale-in">
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="aspect-video bg-slate-100 animate-pulse" />
             <div className="p-5 space-y-3">
-              <div className="h-5 bg-[#1a1e2b] rounded-lg w-3/4 animate-pulse" />
-              <div className="h-4 bg-[#1a1e2b] rounded-lg w-1/2 animate-pulse" />
+              <div className="h-5 bg-slate-100 rounded-lg w-3/4 animate-pulse" />
+              <div className="h-4 bg-slate-100 rounded-lg w-1/2 animate-pulse" />
             </div>
           </div>
         </div>
       )}
 
-      {/* Résultat */}
+      {/* ===== RESULT CARD ===== */}
       {info && !analyzing && (
-        <div className="w-full max-w-xl mt-10 animate-scale-in">
-          <div className="bg-[#12151f] rounded-2xl border border-[#1e2433] overflow-hidden shadow-2xl shadow-black/40">
-            
+        <div className="max-w-2xl mx-auto px-4 mt-10 animate-scale-in">
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
             {info.thumbnail && (
-              <div className="relative aspect-video bg-black overflow-hidden">
+              <div className="relative aspect-video bg-slate-100 overflow-hidden">
                 <img
                   src={info.thumbnail}
                   alt={info.title}
-                  className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
+                  className="w-full h-full object-cover"
                   onError={(e) => {
                     if (info.videoId) {
                       e.target.src = `https://i.ytimg.com/vi/${info.videoId}/hqdefault.jpg`;
                     }
                   }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#12151f]/80 to-transparent opacity-60" />
               </div>
             )}
 
             <div className="p-6">
-              <h2 className="text-lg font-semibold text-white leading-snug line-clamp-2">
+              <h2 className="text-lg font-semibold text-slate-900 leading-snug line-clamp-2">
                 {info.title}
               </h2>
-              <p className="mt-1.5 text-sm text-slate-400 flex items-center gap-2">
-                <span>{info.author}</span>
+              <p className="mt-1.5 text-sm text-slate-500">
+                {info.author}
                 {info.platform && info.platform !== "unknown" && (
-                  <>
-                    <span className="w-1 h-1 rounded-full bg-slate-600"></span>
-                    <span className="capitalize text-indigo-300/80">{info.platform}</span>
-                  </>
+                  <span className="ml-2 capitalize text-indigo-600 font-medium">
+                    • {info.platform}
+                  </span>
                 )}
               </p>
 
-              <div className="mt-7 space-y-3">
-                <p className="text-[11px] uppercase tracking-widest text-slate-500 font-medium">
+              <div className="mt-6 space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
                   Qualité vidéo
                 </p>
-                
                 <div className="grid grid-cols-3 gap-2.5">
                   {["1080", "720", "480"].map((q) => (
                     <button
                       key={q}
                       onClick={() => download("mp4", q)}
                       disabled={!!downloading}
-                      className="relative py-3 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 hover:border-indigo-500/40 text-indigo-300 text-sm font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="py-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 text-indigo-700 text-sm font-semibold transition active:scale-95 disabled:opacity-50"
                     >
                       {downloading === `mp4-${q}` ? (
                         <svg className="animate-spin h-4 w-4 mx-auto" viewBox="0 0 24 24">
@@ -220,7 +221,7 @@ export default function Home() {
                 <button
                   onClick={() => download("mp3")}
                   disabled={!!downloading}
-                  className="w-full py-3.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 hover:border-emerald-500/40 text-emerald-300 text-sm font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full py-3.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 text-emerald-700 text-sm font-semibold transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {downloading === "mp3-1080" || downloading === "mp3" ? (
                     <>
@@ -231,12 +232,7 @@ export default function Home() {
                       Préparation...
                     </>
                   ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                      </svg>
-                      Télécharger MP3
-                    </>
+                    "Télécharger MP3"
                   )}
                 </button>
               </div>
@@ -245,9 +241,90 @@ export default function Home() {
         </div>
       )}
 
-      {/* Footer */}
-      <footer className="mt-20 text-center text-xs text-slate-600 animate-fade-in" style={{ animationDelay: "0.3s" }}>
-        Sans publicité • Sans redirection • Direct
+      {/* ===== FEATURES ===== */}
+      {!info && !analyzing && (
+        <section className="max-w-5xl mx-auto px-4 mt-20 mb-16 animate-fade-in" style={{ animationDelay: "0.2s" }}>
+          <h2 className="text-center text-2xl font-bold text-slate-900 mb-10">
+            Pourquoi nous utiliser ?
+          </h2>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[
+              {
+                title: "Sans publicité",
+                desc: "Aucune pub, aucun pop-up, aucune redirection vers des sites douteux.",
+                icon: (
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                ),
+              },
+              {
+                title: "Multi-plateformes",
+                desc: "YouTube, TikTok, Instagram, Twitter, Reddit, Facebook, SoundCloud et plus.",
+                icon: (
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                  </svg>
+                ),
+              },
+              {
+                title: "Téléchargement direct",
+                desc: "Le fichier arrive directement dans ton navigateur, sans étape intermédiaire.",
+                icon: (
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                ),
+              },
+              {
+                title: "MP4 & MP3",
+                desc: "Choisis la qualité vidéo (1080p, 720p, 480p) ou extrais uniquement l’audio.",
+                icon: (
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                  </svg>
+                ),
+              },
+              {
+                title: "Rapide & simple",
+                desc: "Colle le lien, analyse, télécharge. Trois étapes, zéro complication.",
+                icon: (
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                ),
+              },
+              {
+                title: "Respect de la vie privée",
+                desc: "Aucune inscription, aucun tracking. On ne stocke rien de tes liens.",
+                icon: (
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                ),
+              },
+            ].map((item, i) => (
+              <div
+                key={i}
+                className="bg-white rounded-2xl border border-slate-200 p-6 hover:shadow-md hover:border-indigo-100 transition-all duration-300"
+              >
+                <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-4">
+                  {item.icon}
+                </div>
+                <h3 className="font-semibold text-slate-900 mb-1.5">{item.title}</h3>
+                <p className="text-sm text-slate-500 leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ===== FOOTER ===== */}
+      <footer className="border-t border-slate-200 bg-white py-8 mt-auto">
+        <div className="max-w-5xl mx-auto px-4 text-center text-sm text-slate-500">
+          <p>Downloader propre — Aucune publicité • Aucune redirection • Multi-plateformes</p>
+        </div>
       </footer>
     </div>
   );
