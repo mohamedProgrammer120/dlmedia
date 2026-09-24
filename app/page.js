@@ -81,28 +81,32 @@ export default function Home() {
     <div className="min-h-screen bg-slate-50 text-slate-900">
       
       {/* ===== HEADER ===== */}
-      <header className="border-b border-slate-200 bg-white">
-        <div className="max-w-5xl mx-auto px-4 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-            </div>
-            <span className="font-bold text-lg tracking-tight">Downloader</span>
-          </div>
-          <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
-            Gratuit & sans pub
-          </span>
-        </div>
-      </header>
+<header className="border-b border-slate-200 bg-white">
+  <div className="max-w-5xl mx-auto px-4 py-5 flex items-center justify-between">
+    <div className="flex items-center gap-3">
+      {/* Icône */}
+      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-md shadow-indigo-200">
+        <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+      </div>
+      <div>
+        <span className="font-bold text-lg tracking-tight text-slate-900">DL Media</span>
+        <p className="text-[11px] text-slate-400 -mt-0.5">by Mohamed & Grok</p>
+      </div>
+    </div>
+    <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full">
+      Gratuit & sans pub
+    </span>
+  </div>
+</header>
 
       {/* ===== HERO ===== */}
       <section className="max-w-3xl mx-auto px-4 pt-14 pb-10 text-center animate-fade-in">
         <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900 leading-tight">
-          Télécharge tes vidéos
-          <span className="block text-indigo-600">simplement et rapidement</span>
-        </h1>
+  Télécharge tes vidéos
+  <span className="block text-indigo-600">simplement et rapidement</span>
+</h1>
         <p className="mt-5 text-slate-600 text-lg max-w-xl mx-auto leading-relaxed">
           Colle un lien YouTube, TikTok, Instagram, Twitter ou Reddit et télécharge 
           la vidéo ou l’audio en un clic. Aucune publicité, aucune redirection.
@@ -320,12 +324,15 @@ export default function Home() {
         </section>
       )}
 
+      
       {/* ===== FOOTER ===== */}
-      <footer className="border-t border-slate-200 bg-white py-8 mt-auto">
-        <div className="max-w-5xl mx-auto px-4 text-center text-sm text-slate-500">
-          <p>Downloader propre — Aucune publicité • Aucune redirection • Multi-plateformes</p>
-        </div>
-      </footer>
+<footer className="border-t border-slate-200 bg-white py-8 mt-auto">
+  <div className="max-w-5xl mx-auto px-4 text-center text-sm text-slate-500">
+    <p className="font-medium text-slate-700">DL Media</p>
+    <p className="mt-1">Créé par <span className="text-indigo-600 font-medium">Mohamed</span> & <span className="text-indigo-600 font-medium">Grok</span></p>
+    <p className="mt-2 text-xs text-slate-400">Aucune publicité • Aucune redirection • Multi-plateformes</p>
+  </div>
+</footer>
     </div>
   );
 }
