@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 
 const COBALT_API = process.env.COBALT_API || "https://api.cobalt.tools";
-const YOUTUBE_REGEX =
-  /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
 
 export async function POST(request) {
   try {
@@ -10,11 +8,20 @@ export async function POST(request) {
     const { url, format = "mp4", quality = "1080" } = body;
 
     if (!url || typeof url !== "string") {
-      return NextResponse.json({ ok: false, error: "URL manquante." }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "URL manquante." },
+        { status: 400 }
+      );
     }
 
-    if (!YOUTUBE_REGEX.test(url.trim())) {
-      return NextResponse.json({ ok: false, error: "URL YouTube invalide." }, { status: 400 });
+    // Validation basique d'URL
+    try {
+      new URL(url.trim());
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: "URL invalide." },
+        { status: 400 }
+      );
     }
 
     const cobaltBody = {
@@ -59,16 +66,18 @@ export async function POST(request) {
       );
     }
 
-    // Cas tunnel ou redirect → on renvoie l'URL au frontend
+    // Tunnel ou redirect → on renvoie l'URL au frontend
     if (cobaltData.status === "tunnel" || cobaltData.status === "redirect") {
       return NextResponse.json({
         ok: true,
         downloadUrl: cobaltData.url,
-        filename: cobaltData.filename || `video.${format === "mp3" ? "mp3" : "mp4"}`,
+        filename:
+          cobaltData.filename ||
+          `video.${format === "mp3" ? "mp3" : "mp4"}`,
       });
     }
 
-    // Cas picker
+    // Picker
     if (cobaltData.status === "picker" && cobaltData.picker?.length > 0) {
       const first = cobaltData.picker[0];
       return NextResponse.json({
@@ -78,7 +87,10 @@ export async function POST(request) {
       });
     }
 
-    return NextResponse.json({ ok: false, error: "Réponse Cobalt inattendue." }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "Réponse Cobalt inattendue." },
+      { status: 500 }
+    );
   } catch (err) {
     console.error("[download]", err);
     return NextResponse.json(

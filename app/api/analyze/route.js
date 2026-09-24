@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
 
-const YOUTUBE_REGEX =
-  /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -15,66 +12,82 @@ export async function POST(request) {
       );
     }
 
-    const match = url.trim().match(YOUTUBE_REGEX);
-    if (!match) {
+    const cleanUrl = url.trim();
+
+    // Validation basique d'URL
+    try {
+      new URL(cleanUrl);
+    } catch {
       return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "URL YouTube non reconnue. Formats acceptés : youtube.com/watch, youtu.be/, youtube.com/shorts/",
-        },
+        { ok: false, error: "URL invalide." },
         { status: 400 }
       );
     }
 
-    // Méthode légère et fiable pour les métadonnées (pas de téléchargement)
-    // oEmbed officiel YouTube
-    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(
-      url.trim()
-    )}&format=json`;
+    // Détection YouTube pour oEmbed (meilleure qualité de metadata)
+    const isYoutube =
+      /youtube\.com|youtu\.be/i.test(cleanUrl);
 
-    const oembedRes = await fetch(oembedUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      },
-      next: { revalidate: 3600 },
-    });
+    if (isYoutube) {
+      const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(
+        cleanUrl
+      )}&format=json`;
 
-    if (!oembedRes.ok) {
-      // Vidéo privée / age-restricted / indisponible
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Impossible d'accéder à cette vidéo (privée, restreinte par âge ou indisponible).",
+      const oembedRes = await fetch(oembedUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         },
-        { status: 403 }
-      );
+      });
+
+      if (oembedRes.ok) {
+        const data = await oembedRes.json();
+        const videoIdMatch = cleanUrl.match(
+          /(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/
+        );
+        const videoId = videoIdMatch?.[1];
+
+        return NextResponse.json({
+          ok: true,
+          title: data.title || "Sans titre",
+          author: data.author_name || "Inconnu",
+          thumbnail:
+            data.thumbnail_url?.replace("hqdefault", "maxresdefault") ||
+            (videoId
+              ? `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`
+              : null),
+          videoId,
+          url: cleanUrl,
+          platform: "youtube",
+        });
+      }
     }
 
-    const data = await oembedRes.json();
-
-    // Durée non fournie par oEmbed → on la laisse null
-    // Thumbnail HQ : on force maxres si possible
-    const videoId = match[5];
-    const thumbnail =
-      data.thumbnail_url?.replace("hqdefault", "maxresdefault") ||
-      `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+    // Pour les autres plateformes → réponse générique
+    // Cobalt s'occupera du téléchargement
+    let platform = "unknown";
+    if (/tiktok\.com/i.test(cleanUrl)) platform = "tiktok";
+    else if (/instagram\.com/i.test(cleanUrl)) platform = "instagram";
+    else if (/twitter\.com|x\.com/i.test(cleanUrl)) platform = "twitter";
+    else if (/reddit\.com/i.test(cleanUrl)) platform = "reddit";
+    else if (/facebook\.com|fb\.watch/i.test(cleanUrl)) platform = "facebook";
+    else if (/soundcloud\.com/i.test(cleanUrl)) platform = "soundcloud";
+    else if (/vimeo\.com/i.test(cleanUrl)) platform = "vimeo";
+    else if (/pinterest\./i.test(cleanUrl)) platform = "pinterest";
+    else if (/twitch\.tv/i.test(cleanUrl)) platform = "twitch";
 
     return NextResponse.json({
       ok: true,
-      title: data.title || "Sans titre",
-      author: data.author_name || "Inconnu",
-      duration: null,
-      thumbnail,
-      videoId,
-      url: url.trim(),
+      title: "Média détecté",
+      author: platform.charAt(0).toUpperCase() + platform.slice(1),
+      thumbnail: null,
+      url: cleanUrl,
+      platform,
     });
   } catch (err) {
     console.error("[analyze]", err);
     return NextResponse.json(
-      { ok: false, error: "Erreur lors de l'analyse de la vidéo." },
+      { ok: false, error: "Erreur lors de l'analyse." },
       { status: 500 }
     );
   }

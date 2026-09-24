@@ -7,7 +7,7 @@ export default function Home() {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
-  const [downloading, setDownloading] = useState(null); // "mp4-1080" | "mp3" etc.
+  const [downloading, setDownloading] = useState(null);
 
   const inputRef = useRef(null);
 
@@ -16,7 +16,6 @@ export default function Home() {
     const pasted = e.clipboardData.getData("text").trim();
     if (pasted) {
       setUrl(pasted);
-      // Analyse automatique après un court délai
       setTimeout(() => analyze(pasted), 300);
     }
   }, []);
@@ -50,44 +49,45 @@ export default function Home() {
     }
   };
 
-const download = async (format, quality = "1080") => {
-  if (!info?.url) return;
+  const download = async (format, quality = "1080") => {
+    if (!info?.url) return;
 
-  setDownloading(`${format}-${quality}`);
-  setError(null);
+    setDownloading(`${format}-${quality}`);
+    setError(null);
 
-  try {
-    const res = await fetch("/api/download", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url: info.url,
-        format,
-        quality,
-      }),
-    });
+    try {
+      const res = await fetch("/api/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: info.url,
+          format,
+          quality,
+        }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (!data.ok) {
-      throw new Error(data.error || "Échec du téléchargement");
+      if (!data.ok) {
+        throw new Error(data.error || "Échec du téléchargement");
+      }
+
+      // Téléchargement direct depuis le tunnel Cobalt
+      const a = document.createElement("a");
+      a.href = data.downloadUrl;
+      a.download = data.filename || `video.${format === "mp3" ? "mp3" : "mp4"}`;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      setError(err.message || "Erreur lors du téléchargement");
+    } finally {
+      setDownloading(null);
     }
+  };
 
-    // Téléchargement direct depuis le tunnel Cobalt
-    const a = document.createElement("a");
-    a.href = data.downloadUrl;
-    a.download = data.filename || `video.${format === "mp3" ? "mp3" : "mp4"}`;
-    a.target = "_blank"; // important sur mobile
-    a.rel = "noopener noreferrer";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  } catch (err) {
-    setError(err.message || "Erreur lors du téléchargement");
-  } finally {
-    setDownloading(null);
-  }
-};
   return (
     <div className="min-h-screen bg-[#0d0f17] text-gray-100 flex flex-col items-center px-4 py-12">
       {/* Header */}
@@ -96,7 +96,7 @@ const download = async (format, quality = "1080") => {
           Downloader <span className="text-indigo-400">propre</span>
         </h1>
         <p className="mt-2 text-gray-400 text-sm">
-          Sans pub • Sans redirection • Téléchargement direct
+          YouTube • TikTok • Instagram • Twitter • Reddit • et plus
         </p>
       </header>
 
@@ -110,7 +110,7 @@ const download = async (format, quality = "1080") => {
             onChange={(e) => setUrl(e.target.value)}
             onPaste={handlePaste}
             onKeyDown={(e) => e.key === "Enter" && analyze()}
-            placeholder="Colle un lien YouTube / Shorts / Music..."
+            placeholder="Colle un lien YouTube, TikTok, Instagram, Twitter..."
             className="w-full bg-[#161926] border border-gray-700/60 rounded-2xl px-5 py-4 pr-28 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition"
           />
           <button
@@ -170,28 +170,37 @@ const download = async (format, quality = "1080") => {
         <div className="w-full max-w-2xl mt-8">
           <div className="bg-[#161926] rounded-2xl overflow-hidden border border-gray-800 shadow-xl">
             {/* Thumbnail */}
-            <div className="relative aspect-video bg-black">
-              <img
-                src={info.thumbnail}
-                alt={info.title}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  e.target.src = `https://i.ytimg.com/vi/${info.videoId}/hqdefault.jpg`;
-                }}
-              />
-            </div>
+            {info.thumbnail && (
+              <div className="relative aspect-video bg-black">
+                <img
+                  src={info.thumbnail}
+                  alt={info.title}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    if (info.videoId) {
+                      e.target.src = `https://i.ytimg.com/vi/${info.videoId}/hqdefault.jpg`;
+                    }
+                  }}
+                />
+              </div>
+            )}
 
             {/* Infos */}
             <div className="p-5 sm:p-6">
               <h2 className="text-lg sm:text-xl font-semibold text-white leading-snug line-clamp-2">
                 {info.title}
               </h2>
-              <p className="mt-1 text-sm text-gray-400">{info.author}</p>
+              <p className="mt-1 text-sm text-gray-400">
+                {info.author}
+                {info.platform && info.platform !== "unknown"
+                  ? ` • ${info.platform}`
+                  : ""}
+              </p>
 
               {/* Boutons d'action */}
               <div className="mt-6 space-y-3">
                 <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">
-                  Télécharger la vidéo
+                  Télécharger
                 </p>
                 <div className="grid grid-cols-3 gap-2">
                   {["1080", "720", "480"].map((q) => (
@@ -260,9 +269,9 @@ const download = async (format, quality = "1080") => {
         </div>
       )}
 
-      {/* Footer discret */}
+      {/* Footer */}
       <footer className="mt-16 text-center text-xs text-gray-600">
-        Aucune publicité • Aucune redirection • Flux servi directement
+        Aucune publicité • Aucune redirection • Multi-plateformes
       </footer>
     </div>
   );
