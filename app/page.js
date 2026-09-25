@@ -60,52 +60,43 @@ export default function Home() {
 
   // Téléchargement du fichier sous forme de Blob (Résout le problème des fichiers à 0 octet)
   const download = async (format, quality = "1080") => {
-    if (!info?.url) return;
+  if (!info?.url) return;
 
-    setDownloading(`${format}-${quality}`);
-    setError(null);
+  setDownloading(`${format}-${quality}`);
+  setError(null);
 
-    try {
-      const res = await fetch("/api/download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: info.url, format, quality }),
-      });
+  try {
+    const res = await fetch("/api/download", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: info.url, format, quality }),
+    });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || "Échec du téléchargement");
-      }
+    const data = await res.json();
 
-      // Conversion de la réponse binaire en fichier Blob
-      const blob = await res.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || "Échec du téléchargement");
+    }
 
-      // Récupération du nom du fichier si transmis dans l'en-tête Content-Disposition
-      const disposition = res.headers.get("Content-Disposition");
-      let filename = `${info.title || "video"}.${format === "mp3" ? "mp3" : "mp4"}`;
-      if (disposition && disposition.includes("filename=")) {
-        const matches = disposition.match(/filename="?([^"]+)"?/);
-        if (matches && matches[1]) {
-          filename = decodeURIComponent(matches[1]);
-        }
-      }
-
-      // Déclenchement du téléchargement navigateur
+    if (data.downloadUrl) {
+      // Ouvre/Déclenche le lien directement sur la machine du client
       const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = filename;
+      a.href = data.downloadUrl;
+      a.download = data.filename || `video.${format === "mp3" ? "mp3" : "mp4"}`;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(blobUrl);
-    } catch (err) {
-      setError(err.message || "Erreur lors du téléchargement");
-    } finally {
-      setDownloading(null);
+    } else {
+      throw new Error("Lien de téléchargement introuvable");
     }
-  };
-
+  } catch (err) {
+    setError(err.message || "Erreur lors du téléchargement");
+  } finally {
+    setDownloading(null);
+  }
+};
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
       {/* ===== TOP BAR ===== */}
