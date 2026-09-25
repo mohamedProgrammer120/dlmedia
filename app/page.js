@@ -59,56 +59,85 @@ export default function Home() {
   };
 
   // Téléchargement du fichier sous forme de Blob (Résout le problème des fichiers à 0 octet)
-  const download = async (format, quality = "1080") => {
-  if (!info?.url) return;
+  import { NextResponse } from "next/server";
 
-  setDownloading(`${format}-${quality}`);
-  setError(null);
+const COBALT_API = process.env.COBALT_API || "https://cobalt-production-a71b.up.railway.app";
 
+export async function POST(request) {
   try {
-    const res = await fetch("/api/download", {
+    const body = await request.json();
+    const { url, format = "mp4", quality = "1080" } = body;
+
+    if (!url || typeof url !== "string") {
+      return NextResponse.json(
+        { ok: false, error: "URL manquante." },
+        { status: 400 }
+      );
+    }
+
+    const cobaltBody = {
+      url: url.trim(),
+      videoQuality: quality,
+      downloadMode: format === "mp3" ? "audio" : "auto",
+      audioFormat: format === "mp3" ? "mp3" : "best",
+      filenameStyle: "pretty",
+      youtubeVideoCodec: "h264",
+    };
+
+    const cobaltRes = await fetch(`${COBALT_API}/`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: info.url, format, quality }),
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      },
+      body: JSON.stringify(cobaltBody),
     });
 
-    const data = await res.json();
+    const cobaltData = await cobaltRes.json();
 
-    if (!res.ok || !data.ok) {
-      throw new Error(data.error || "Échec de récupération du lien.");
+    if (cobaltData.status === "error") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: cobaltData.error?.text || "Erreur de téléchargement Cobalt.",
+        },
+        { status: 403 }
+      );
     }
 
-    if (data.downloadUrl) {
-      // Téléchargement direct du flux binaire pour forcer l'écriture sur le disque
-      const mediaResponse = await fetch(data.downloadUrl);
-      if (!mediaResponse.ok) {
-        throw new Error("Impossible de télécharger le flux média.");
-      }
+    let downloadUrl = null;
+    let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
 
-      const blob = await mediaResponse.blob();
-      
-      // Sécurité : Vérifie que le fichier reçu n'est pas vide
-      if (blob.size === 0) {
-        throw new Error("Le fichier reçu est vide (0 octet).");
-      }
-
-      const blobUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = data.filename || `video.${format === "mp3" ? "mp3" : "mp4"}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(blobUrl);
-    } else {
-      throw new Error("Lien introuvable.");
+    if (cobaltData.status === "tunnel" || cobaltData.status === "redirect") {
+      downloadUrl = cobaltData.url;
+      filename = cobaltData.filename || filename;
+    } else if (cobaltData.status === "picker" && cobaltData.picker?.length > 0) {
+      downloadUrl = cobaltData.picker[0].url;
+      filename = cobaltData.picker[0].filename || filename;
     }
+
+    if (!downloadUrl) {
+      return NextResponse.json(
+        { ok: false, error: "URL de téléchargement introuvable." },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      downloadUrl,
+      filename,
+    });
   } catch (err) {
-    setError(err.message || "Erreur lors du téléchargement");
-  } finally {
-    setDownloading(null);
+    console.error("[download]", err);
+    return NextResponse.json(
+      { ok: false, error: "Erreur serveur lors du traitement." },
+      { status: 500 }
+    );
   }
-};
+}
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
       {/* ===== TOP BAR ===== */}
