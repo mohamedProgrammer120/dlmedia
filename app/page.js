@@ -79,9 +79,27 @@ export default function Home() {
     }
 
     if (data.downloadUrl) {
-      // Ouvre directement le flux binaire généré par Cobalt
-      // Le navigateur prend le relais immédiatement pour télécharger la vidéo complète
-      window.open(data.downloadUrl, "_blank");
+      // Téléchargement direct du flux binaire pour forcer l'écriture sur le disque
+      const mediaResponse = await fetch(data.downloadUrl);
+      if (!mediaResponse.ok) {
+        throw new Error("Impossible de télécharger le flux média.");
+      }
+
+      const blob = await mediaResponse.blob();
+      
+      // Sécurité : Vérifie que le fichier reçu n'est pas vide
+      if (blob.size === 0) {
+        throw new Error("Le fichier reçu est vide (0 octet).");
+      }
+
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = data.filename || `video.${format === "mp3" ? "mp3" : "mp4"}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(blobUrl);
     } else {
       throw new Error("Lien introuvable.");
     }
