@@ -14,16 +14,6 @@ export async function POST(request) {
       );
     }
 
-    // Validation basique d'URL
-    try {
-      new URL(url.trim());
-    } catch {
-      return NextResponse.json(
-        { ok: false, error: "URL invalide." },
-        { status: 400 }
-      );
-    }
-
     const cobaltBody = {
       url: url.trim(),
       filenameStyle: "pretty",
@@ -40,7 +30,6 @@ export async function POST(request) {
       cobaltBody.youtubeVideoCodec = "h264";
     }
 
-    // 1. Demande de lien de téléchargement à l'API Cobalt
     const cobaltRes = await fetch(`${COBALT_API}/`, {
       method: "POST",
       headers: {
@@ -66,55 +55,29 @@ export async function POST(request) {
       );
     }
 
-    // Déterminer l'URL finale
-    let targetStreamUrl = null;
-    let fallbackFilename = `video.${format === "mp3" ? "mp3" : "mp4"}`;
+    let downloadUrl = null;
+    let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
 
     if (cobaltData.status === "tunnel" || cobaltData.status === "redirect") {
-      targetStreamUrl = cobaltData.url;
-      fallbackFilename = cobaltData.filename || fallbackFilename;
+      downloadUrl = cobaltData.url;
+      filename = cobaltData.filename || filename;
     } else if (cobaltData.status === "picker" && cobaltData.picker?.length > 0) {
-      targetStreamUrl = cobaltData.picker[0].url;
-      fallbackFilename = cobaltData.picker[0].filename || fallbackFilename;
+      downloadUrl = cobaltData.picker[0].url;
+      filename = cobaltData.picker[0].filename || filename;
     }
 
-    if (!targetStreamUrl) {
+    if (!downloadUrl) {
       return NextResponse.json(
         { ok: false, error: "Réponse Cobalt inattendue." },
         { status: 500 }
       );
     }
 
-    // 2. RÉSOLUTION DU PROBLÈME DES 0 OCTETS :
-    // On télécharge le flux binaire côté serveur et on le transmet directement au navigateur
-    const mediaStream = await fetch(targetStreamUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      },
-    });
-
-    if (!mediaStream.ok) {
-      throw new Error(`Erreur lors de la récupération du flux : ${mediaStream.statusText}`);
-    }
-
-    const headers = new Headers();
-    headers.set(
-      "Content-Type",
-      mediaStream.headers.get("content-type") || (format === "mp3" ? "audio/mpeg" : "video/mp4")
-    );
-    headers.set(
-      "Content-Disposition",
-      `attachment; filename="${encodeURIComponent(fallbackFilename)}"`
-    );
-    if (mediaStream.headers.get("content-length")) {
-      headers.set("Content-Length", mediaStream.headers.get("content-length"));
-    }
-
-    // Renvoi du flux de données direct au client
-    return new Response(mediaStream.body, {
-      status: 200,
-      headers,
+    // Renvoie directement le lien de téléchargement final au frontend
+    return NextResponse.json({
+      ok: true,
+      downloadUrl,
+      filename,
     });
   } catch (err) {
     console.error("[download]", err);
