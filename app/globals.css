@@ -2,33 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body {
-  height: 100%;
-  background: #f8fafc;
-  color: #0f172a;
-  font-family: system-ui, -apple-system, sans-serif;
+:root {
+  --bg: #f1f5f9;
+  --card: rgba(255, 255, 255, 0.75);
+  --border: rgba(255, 255, 255, 0.6);
 }
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #f1f5f9; }
+html, body {
+  height: 100%;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%);
+  color: #0f172a;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(14px); }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.97); }
+  from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
 }
 
-.animate-fade-in {
-  animation: fadeIn 0.45s ease-out forwards;
+.animate-fade-up {
+  animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-scale-in {
-  animation: scaleIn 0.35s ease-out forwards;
+  animation: scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 .line-clamp-2 {
