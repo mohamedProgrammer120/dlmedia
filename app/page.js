@@ -79,9 +79,9 @@ export default function Home() {
     }
 
     if (data.downloadUrl) {
-      // Redirection directe vers l'URL du flux de la vidéo
-      // Cela évite le téléchargement à 0 octet provoqué par le blocage CORS des liens Blob
-      window.location.href = data.downloadUrl;
+      // Ouvre directement le flux binaire généré par Cobalt
+      // Le navigateur prend le relais immédiatement pour télécharger la vidéo complète
+      window.open(data.downloadUrl, "_blank");
     } else {
       throw new Error("Lien introuvable.");
     }
