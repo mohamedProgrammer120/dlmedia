@@ -1,12 +1,6 @@
 import { NextResponse } from "next/server";
 
-// Liste d'instances Cobalt publiques si la principale est bloquée
-const COBALT_INSTANCES = [
-  process.env.COBALT_API,
-  "https://api.cobalt.tools",
-  "https://cobalt-api.kwiatek.xyz",
-  "https://co.wuk.sh",
-].filter(Boolean);
+const COBALT_API = process.env.COBALT_API || "https://api.cobalt.tools";
 
 export async function POST(request) {
   try {
@@ -27,60 +21,45 @@ export async function POST(request) {
       audioFormat: format === "mp3" ? "mp3" : "best",
       filenameStyle: "pretty",
       youtubeVideoCodec: "h264",
+      alwaysProxy: true, // Force Cobalt à servir le fichier de façon compatible
     };
 
-    let cobaltData = null;
-    let lastError = null;
+    const cobaltRes = await fetch(`${COBALT_API}/`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      },
+      body: JSON.stringify(cobaltBody),
+    });
 
-    // Boucle sur les instances pour trouver une instance fonctionnelle
-    for (const instanceUrl of COBALT_INSTANCES) {
-      try {
-        const res = await fetch(`${instanceUrl}/`, {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          },
-          body: JSON.stringify(cobaltBody),
-        });
+    const cobaltData = await cobaltRes.json();
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.status !== "error") {
-            cobaltData = data;
-            break;
-          } else {
-            lastError = data.error?.text || "Erreur de l'instance";
-          }
-        }
-      } catch (e) {
-        lastError = "Instance injoignable";
-      }
-    }
-
-    if (!cobaltData) {
+    if (cobaltData.status === "error") {
       return NextResponse.json(
-        { ok: false, error: lastError || "Toutes les instances Cobalt ont échoué." },
-        { status: 503 }
+        {
+          ok: false,
+          error: cobaltData.error?.code?.includes("youtube")
+            ? "YouTube bloque cette instance actuellement."
+            : cobaltData.error?.text || "Erreur de téléchargement.",
+        },
+        { status: 403 }
       );
     }
 
     let downloadUrl = null;
-    let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
 
     if (cobaltData.status === "tunnel" || cobaltData.status === "redirect") {
       downloadUrl = cobaltData.url;
-      filename = cobaltData.filename || filename;
     } else if (cobaltData.status === "picker" && cobaltData.picker?.length > 0) {
       downloadUrl = cobaltData.picker[0].url;
-      filename = cobaltData.picker[0].filename || filename;
     }
 
     if (!downloadUrl) {
       return NextResponse.json(
-        { ok: false, error: "Lien de téléchargement non généré." },
+        { ok: false, error: "Lien de téléchargement non disponible." },
         { status: 500 }
       );
     }
@@ -88,7 +67,6 @@ export async function POST(request) {
     return NextResponse.json({
       ok: true,
       downloadUrl,
-      filename,
     });
   } catch (err) {
     console.error("[download]", err);
