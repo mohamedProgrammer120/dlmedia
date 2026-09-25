@@ -10,7 +10,7 @@ export default function manifest() {
     orientation: "portrait",
     icons: [
       {
-        src: "/icon.png",
+        src: "/icon.png",           // ← icône 192x192
         sizes: "192x192",
         type: "image/png",
         purpose: "any maskable"
