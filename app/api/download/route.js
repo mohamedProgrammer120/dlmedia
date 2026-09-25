@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-const COBALT_API = process.env.COBALT_API || "https://api.cobalt.tools";
+// Instance Cobalt dédiée sur Railway
+const COBALT_API = process.env.COBALT_API || "https://cobalt-production-a71b.up.railway.app";
 
 export async function POST(request) {
   try {
@@ -21,7 +22,7 @@ export async function POST(request) {
       audioFormat: format === "mp3" ? "mp3" : "best",
       filenameStyle: "pretty",
       youtubeVideoCodec: "h264",
-      alwaysProxy: true, // Force Cobalt à servir le fichier de façon compatible
+      alwaysProxy: true,
     };
 
     const cobaltRes = await fetch(`${COBALT_API}/`, {
@@ -41,25 +42,26 @@ export async function POST(request) {
       return NextResponse.json(
         {
           ok: false,
-          error: cobaltData.error?.code?.includes("youtube")
-            ? "YouTube bloque cette instance actuellement."
-            : cobaltData.error?.text || "Erreur de téléchargement.",
+          error: cobaltData.error?.text || "Erreur lors de la génération du lien.",
         },
         { status: 403 }
       );
     }
 
     let downloadUrl = null;
+    let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
 
     if (cobaltData.status === "tunnel" || cobaltData.status === "redirect") {
       downloadUrl = cobaltData.url;
+      filename = cobaltData.filename || filename;
     } else if (cobaltData.status === "picker" && cobaltData.picker?.length > 0) {
       downloadUrl = cobaltData.picker[0].url;
+      filename = cobaltData.picker[0].filename || filename;
     }
 
     if (!downloadUrl) {
       return NextResponse.json(
-        { ok: false, error: "Lien de téléchargement non disponible." },
+        { ok: false, error: "Lien de téléchargement introuvable." },
         { status: 500 }
       );
     }
@@ -67,6 +69,7 @@ export async function POST(request) {
     return NextResponse.json({
       ok: true,
       downloadUrl,
+      filename,
     });
   } catch (err) {
     console.error("[download]", err);
