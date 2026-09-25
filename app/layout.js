@@ -1,10 +1,12 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Downloader propre — YouTube MP4 / MP3",
+  title: "DL Media — Téléchargeur de vidéos",
   description:
-    "Téléchargeur YouTube sans publicité, sans redirection, téléchargement direct dans le navigateur.",
-  robots: "noindex, nofollow",
+    "Télécharge des vidéos YouTube, TikTok, Instagram, Twitter et plus. Sans publicité, sans redirection.",
+  icons: {
+    icon: "/icon.png",
+  },
 };
 
 export default function RootLayout({ children }) {
