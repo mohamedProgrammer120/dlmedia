@@ -11,17 +11,27 @@ export default function Home() {
 
   const inputRef = useRef(null);
 
+  // Fonction utilitaire pour nettoyer l'URL entrée
+  const cleanInputUrl = (rawUrl) => {
+    if (!rawUrl) return "";
+    const matched = rawUrl.match(/(https?:\/\/[^\s]+)/);
+    return matched ? matched[0] : rawUrl.trim();
+  };
+
   const handlePaste = useCallback((e) => {
     const pasted = e.clipboardData.getData("text").trim();
     if (pasted) {
-      setUrl(pasted);
-      setTimeout(() => analyze(pasted), 200);
+      const cleaned = cleanInputUrl(pasted);
+      setUrl(cleaned);
+      setTimeout(() => analyze(cleaned), 200);
     }
   }, []);
 
   const analyze = async (targetUrl = url) => {
-    if (!targetUrl.trim()) return;
+    const cleanedUrl = cleanInputUrl(targetUrl);
+    if (!cleanedUrl) return;
 
+    setUrl(cleanedUrl);
     setAnalyzing(true);
     setError(null);
     setInfo(null);
@@ -30,7 +40,7 @@ export default function Home() {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: targetUrl.trim() }),
+        body: JSON.stringify({ url: cleanedUrl }),
       });
 
       const data = await res.json();
@@ -62,14 +72,12 @@ export default function Home() {
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Échec du téléchargement");
 
-      const a = document.createElement("a");
-      a.href = data.downloadUrl;
-      a.download = data.filename || `video.${format === "mp3" ? "mp3" : "mp4"}`;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      if (data.downloadUrl) {
+        // Redirection directe vers l'URL du flux pour garantir un téléchargement complet
+        window.open(data.downloadUrl, "_blank");
+      } else {
+        throw new Error("Lien de téléchargement introuvable");
+      }
     } catch (err) {
       setError(err.message || "Erreur lors du téléchargement");
     } finally {
@@ -79,7 +87,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      
       {/* ===== TOP BAR ===== */}
       <header className="sticky top-0 z-50 glass border-b border-white/40">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -102,14 +109,13 @@ export default function Home() {
 
       {/* ===== MAIN ===== */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-10">
-        
         {/* Hero */}
         <div className="text-center mb-10 animate-fade-up">
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
             Téléchargeur moderne
           </h1>
           <p className="mt-3 text-slate-500 text-[15px] max-w-md mx-auto">
-            YouTube, TikTok, Instagram, Twitter…  
+            YouTube, TikTok, Instagram, Twitter…<br />
             Colle un lien et télécharge en un clic.
           </p>
         </div>
@@ -212,7 +218,7 @@ export default function Home() {
                         key={q}
                         onClick={() => download("mp4", q)}
                         disabled={!!downloading}
-                        className="py-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-semibold transition-all active:scale-95 disabled:opacity-50"
+                        className="py-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-semibold transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center"
                       >
                         {downloading === `mp4-${q}` ? (
                           <svg className="animate-spin h-4 w-4 mx-auto" viewBox="0 0 24 24">
