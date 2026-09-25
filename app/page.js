@@ -11,13 +11,14 @@ export default function Home() {
 
   const inputRef = useRef(null);
 
-  // Fonction utilitaire pour nettoyer l'URL entrée
+  // Fonction utilitaire pour nettoyer l'URL entrée (supprime le texte indésirable au début)
   const cleanInputUrl = (rawUrl) => {
     if (!rawUrl) return "";
     const matched = rawUrl.match(/(https?:\/\/[^\s]+)/);
     return matched ? matched[0] : rawUrl.trim();
   };
 
+  // Gestion du collage automatique dans le champ texte
   const handlePaste = useCallback((e) => {
     const pasted = e.clipboardData.getData("text").trim();
     if (pasted) {
@@ -27,6 +28,7 @@ export default function Home() {
     }
   }, []);
 
+  // Analyse du lien
   const analyze = async (targetUrl = url) => {
     const cleanedUrl = cleanInputUrl(targetUrl);
     if (!cleanedUrl) return;
@@ -56,6 +58,7 @@ export default function Home() {
     }
   };
 
+  // Téléchargement du fichier sous forme de Blob (Résout le problème des fichiers à 0 octet)
   const download = async (format, quality = "1080") => {
     if (!info?.url) return;
 
@@ -69,15 +72,33 @@ export default function Home() {
         body: JSON.stringify({ url: info.url, format, quality }),
       });
 
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Échec du téléchargement");
-
-      if (data.downloadUrl) {
-        // Redirection directe vers l'URL du flux pour garantir un téléchargement complet
-        window.open(data.downloadUrl, "_blank");
-      } else {
-        throw new Error("Lien de téléchargement introuvable");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Échec du téléchargement");
       }
+
+      // Conversion de la réponse binaire en fichier Blob
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      // Récupération du nom du fichier si transmis dans l'en-tête Content-Disposition
+      const disposition = res.headers.get("Content-Disposition");
+      let filename = `${info.title || "video"}.${format === "mp3" ? "mp3" : "mp4"}`;
+      if (disposition && disposition.includes("filename=")) {
+        const matches = disposition.match(/filename="?([^"]+)"?/);
+        if (matches && matches[1]) {
+          filename = decodeURIComponent(matches[1]);
+        }
+      }
+
+      // Déclenchement du téléchargement navigateur
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(blobUrl);
     } catch (err) {
       setError(err.message || "Erreur lors du téléchargement");
     } finally {
@@ -86,9 +107,9 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
       {/* ===== TOP BAR ===== */}
-      <header className="sticky top-0 z-50 glass border-b border-white/40">
+      <header className="sticky top-0 z-50 glass border-b border-white/40 bg-white/80 backdrop-blur-md">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-200">
@@ -109,6 +130,7 @@ export default function Home() {
 
       {/* ===== MAIN ===== */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-10">
+        
         {/* Hero */}
         <div className="text-center mb-10 animate-fade-up">
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
@@ -122,7 +144,7 @@ export default function Home() {
 
         {/* Search Card */}
         <div className="w-full max-w-xl animate-fade-up" style={{ animationDelay: "0.08s" }}>
-          <div className="glass rounded-2xl p-2 shadow-xl shadow-slate-200/60">
+          <div className="glass rounded-2xl p-2 shadow-xl shadow-slate-200/60 bg-white border border-slate-100">
             <div className="flex items-center gap-2">
               <input
                 ref={inputRef}
@@ -153,7 +175,7 @@ export default function Home() {
 
           {/* Error */}
           {error && (
-            <div className="mt-4 animate-scale-in glass rounded-xl px-4 py-3 text-sm text-red-600 flex items-center gap-2.5 border border-red-100">
+            <div className="mt-4 animate-scale-in glass rounded-xl px-4 py-3 text-sm text-red-600 flex items-center gap-2.5 border border-red-100 bg-red-50/50">
               <svg className="w-4.5 h-4.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -162,10 +184,10 @@ export default function Home() {
           )}
         </div>
 
-        {/* Skeleton */}
+        {/* Skeleton Loading */}
         {analyzing && (
           <div className="w-full max-w-xl mt-8 animate-scale-in">
-            <div className="glass rounded-2xl overflow-hidden shadow-xl shadow-slate-200/50">
+            <div className="glass rounded-2xl overflow-hidden shadow-xl shadow-slate-200/50 bg-white border border-slate-100">
               <div className="aspect-video bg-slate-100/80 animate-pulse" />
               <div className="p-5 space-y-3">
                 <div className="h-5 bg-slate-100 rounded-lg w-3/4 animate-pulse" />
@@ -178,7 +200,7 @@ export default function Home() {
         {/* Result Card */}
         {info && !analyzing && (
           <div className="w-full max-w-xl mt-8 animate-scale-in">
-            <div className="glass rounded-2xl overflow-hidden shadow-xl shadow-slate-200/60">
+            <div className="glass rounded-2xl overflow-hidden shadow-xl shadow-slate-200/60 bg-white border border-slate-100">
               {info.thumbnail && (
                 <div className="relative aspect-video bg-slate-100 overflow-hidden">
                   <img
@@ -243,7 +265,7 @@ export default function Home() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
                         </svg>
-                        Préparation...
+                        Téléchargement en cours...
                       </>
                     ) : (
                       "Télécharger MP3"
@@ -264,7 +286,7 @@ export default function Home() {
               { title: "Direct", icon: "⚡" },
               { title: "Privé", icon: "🔒" },
             ].map((item, i) => (
-              <div key={i} className="glass rounded-xl py-4 px-3 text-center">
+              <div key={i} className="glass rounded-xl py-4 px-3 text-center bg-white/60 border border-slate-100">
                 <div className="text-xl mb-1.5">{item.icon}</div>
                 <div className="text-xs font-medium text-slate-600">{item.title}</div>
               </div>
