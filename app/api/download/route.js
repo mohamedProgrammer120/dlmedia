@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 
-const COBALT_API = process.env.COBALT_API || "https://api.cobalt.tools";
+// Liste d'instances Cobalt publiques si la principale est bloquée
+const COBALT_INSTANCES = [
+  process.env.COBALT_API,
+  "https://api.cobalt.tools",
+  "https://cobalt-api.kwiatek.xyz",
+  "https://co.wuk.sh",
+].filter(Boolean);
 
 export async function POST(request) {
   try {
@@ -16,42 +22,48 @@ export async function POST(request) {
 
     const cobaltBody = {
       url: url.trim(),
+      videoQuality: quality,
+      downloadMode: format === "mp3" ? "audio" : "auto",
+      audioFormat: format === "mp3" ? "mp3" : "best",
       filenameStyle: "pretty",
-      disableMetadata: false,
+      youtubeVideoCodec: "h264",
     };
 
-    if (format === "mp3") {
-      cobaltBody.downloadMode = "audio";
-      cobaltBody.audioFormat = "mp3";
-      cobaltBody.audioBitrate = "128";
-    } else {
-      cobaltBody.downloadMode = "auto";
-      cobaltBody.videoQuality = quality;
-      cobaltBody.youtubeVideoCodec = "h264";
+    let cobaltData = null;
+    let lastError = null;
+
+    // Boucle sur les instances pour trouver une instance fonctionnelle
+    for (const instanceUrl of COBALT_INSTANCES) {
+      try {
+        const res = await fetch(`${instanceUrl}/`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          },
+          body: JSON.stringify(cobaltBody),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status !== "error") {
+            cobaltData = data;
+            break;
+          } else {
+            lastError = data.error?.text || "Erreur de l'instance";
+          }
+        }
+      } catch (e) {
+        lastError = "Instance injoignable";
+      }
     }
 
-    const cobaltRes = await fetch(`${COBALT_API}/`, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      },
-      body: JSON.stringify(cobaltBody),
-    });
-
-    const cobaltData = await cobaltRes.json();
-
-    if (cobaltData.status === "error") {
+    if (!cobaltData) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: cobaltData.error?.code?.includes("youtube")
-            ? "YouTube bloque actuellement cette instance."
-            : cobaltData.error?.text || "Impossible de récupérer le média.",
-        },
-        { status: 403 }
+        { ok: false, error: lastError || "Toutes les instances Cobalt ont échoué." },
+        { status: 503 }
       );
     }
 
@@ -68,12 +80,11 @@ export async function POST(request) {
 
     if (!downloadUrl) {
       return NextResponse.json(
-        { ok: false, error: "Réponse Cobalt inattendue." },
+        { ok: false, error: "Lien de téléchargement non généré." },
         { status: 500 }
       );
     }
 
-    // Renvoie directement le lien de téléchargement final au frontend
     return NextResponse.json({
       ok: true,
       downloadUrl,
@@ -82,7 +93,7 @@ export async function POST(request) {
   } catch (err) {
     console.error("[download]", err);
     return NextResponse.json(
-      { ok: false, error: "Erreur serveur lors du téléchargement." },
+      { ok: false, error: "Erreur serveur lors du traitement." },
       { status: 500 }
     );
   }
