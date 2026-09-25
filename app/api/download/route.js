@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-// Instance Cobalt dédiée sur Railway
 const COBALT_API = process.env.COBALT_API || "https://cobalt-production-a71b.up.railway.app";
 
 export async function POST(request) {
@@ -22,7 +21,6 @@ export async function POST(request) {
       audioFormat: format === "mp3" ? "mp3" : "best",
       filenameStyle: "pretty",
       youtubeVideoCodec: "h264",
-      alwaysProxy: true,
     };
 
     const cobaltRes = await fetch(`${COBALT_API}/`, {
@@ -42,7 +40,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           ok: false,
-          error: cobaltData.error?.text || "Erreur lors de la génération du lien.",
+          error: cobaltData.error?.text || "Erreur de téléchargement Cobalt.",
         },
         { status: 403 }
       );
@@ -61,7 +59,7 @@ export async function POST(request) {
 
     if (!downloadUrl) {
       return NextResponse.json(
-        { ok: false, error: "Lien de téléchargement introuvable." },
+        { ok: false, error: "URL de téléchargement introuvable." },
         { status: 500 }
       );
     }
