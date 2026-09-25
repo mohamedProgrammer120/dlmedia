@@ -75,21 +75,15 @@ export default function Home() {
     const data = await res.json();
 
     if (!res.ok || !data.ok) {
-      throw new Error(data.error || "Échec du téléchargement");
+      throw new Error(data.error || "Échec de récupération du lien.");
     }
 
     if (data.downloadUrl) {
-      // Ouvre/Déclenche le lien directement sur la machine du client
-      const a = document.createElement("a");
-      a.href = data.downloadUrl;
-      a.download = data.filename || `video.${format === "mp3" ? "mp3" : "mp4"}`;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      // Redirection directe vers l'URL du flux de la vidéo
+      // Cela évite le téléchargement à 0 octet provoqué par le blocage CORS des liens Blob
+      window.location.href = data.downloadUrl;
     } else {
-      throw new Error("Lien de téléchargement introuvable");
+      throw new Error("Lien introuvable.");
     }
   } catch (err) {
     setError(err.message || "Erreur lors du téléchargement");
