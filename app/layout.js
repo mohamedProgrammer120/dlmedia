@@ -12,7 +12,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="fr">
-      <script
+      <body className="antialiased">{children}<script
   dangerouslySetInnerHTML={{
     __html: `
       if ('serviceWorker' in navigator) {
@@ -22,8 +22,7 @@ export default function RootLayout({ children }) {
       }
     `,
   }}
-/>
-      <body className="antialiased">{children}</body>
+/></body>
     </html>
   );
 }
