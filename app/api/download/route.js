@@ -17,7 +17,6 @@ export async function POST(request) {
     const cobaltBody = {
       url: url.trim(),
       videoQuality: quality,
-      // Forcer le mode tunnel pour éviter les liens directs bloqués
       downloadMode: "tunnel",
       audioFormat: format === "mp3" ? "mp3" : "best",
       filenameStyle: "pretty",
@@ -47,28 +46,40 @@ export async function POST(request) {
       );
     }
 
-    let downloadUrl = null;
+    let targetUrl = null;
     let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
 
-    if (cobaltData.status === "tunnel" || cobaltData.status === "redirect") {
-      downloadUrl = cobaltData.url;
+    if (cobaltData.status === "tunnel" || cobaltData.status === "redirect" || cobaltData.status === "stream") {
+      targetUrl = cobaltData.url;
       filename = cobaltData.filename || filename;
     } else if (cobaltData.status === "picker" && cobaltData.picker?.length > 0) {
-      downloadUrl = cobaltData.picker[0].url;
+      targetUrl = cobaltData.picker[0].url;
       filename = cobaltData.picker[0].filename || filename;
     }
 
-    if (!downloadUrl) {
+    if (!targetUrl) {
       return NextResponse.json(
         { ok: false, error: "URL de téléchargement introuvable." },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({
-      ok: true,
-      downloadUrl,
-      filename,
+    // Récupérer le flux binaire directement depuis le serveur Cobalt
+    const fileRes = await fetch(targetUrl);
+    
+    if (!fileRes.ok) {
+      return NextResponse.json(
+        { ok: false, error: "Impossible de récupérer le fichier binaire." },
+        { status: 502 }
+      );
+    }
+
+    // Renvoyer la réponse sous forme de fichier binaire téléchargeable
+    return new Response(fileRes.body, {
+      headers: {
+        "Content-Type": fileRes.headers.get("content-type") || "application/octet-stream",
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
+      },
     });
   } catch (err) {
     console.error("[download]", err);
