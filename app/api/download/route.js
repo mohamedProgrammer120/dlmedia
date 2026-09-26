@@ -17,7 +17,8 @@ export async function POST(request) {
     const cobaltBody = {
       url: url.trim(),
       videoQuality: quality,
-      downloadMode: format === "mp3" ? "audio" : "auto",
+      // Forcer le mode tunnel pour éviter les liens directs bloqués
+      downloadMode: "tunnel",
       audioFormat: format === "mp3" ? "mp3" : "best",
       filenameStyle: "pretty",
       youtubeVideoCodec: "h264",
