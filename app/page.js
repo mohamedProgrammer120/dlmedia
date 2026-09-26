@@ -1,12 +1,16 @@
 "use client";
+
 import { useState, useRef, useCallback } from "react";
+
 export default function Home() {
   const [url, setUrl] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
   const [downloading, setDownloading] = useState(null);
+
   const inputRef = useRef(null);
+
   const handlePaste = useCallback((e) => {
     const pasted = e.clipboardData.getData("text").trim();
     if (pasted) {
@@ -14,17 +18,21 @@ export default function Home() {
       setTimeout(() => analyze(pasted), 200);
     }
   }, []);
+
   const analyze = async (targetUrl = url) => {
     if (!targetUrl.trim()) return;
+
     setAnalyzing(true);
     setError(null);
     setInfo(null);
+
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: targetUrl.trim() }),
       });
+
       const data = await res.json();
       if (!data.ok) {
         setError(data.error || "Erreur d'analyse");
@@ -37,18 +45,31 @@ export default function Home() {
       setAnalyzing(false);
     }
   };
+
   const download = async (format, quality = "1080") => {
     if (!info?.url) return;
+
     setDownloading(`${format}-${quality}`);
     setError(null);
+
     try {
       const res = await fetch("/api/download", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: info.url, format, quality }),
+        body: JSON.stringify({
+          url: info.url,
+          format,
+          quality,
+        }),
       });
+
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Échec du téléchargement");
+
+      if (!data.ok) {
+        throw new Error(data.error || "Échec du téléchargement");
+      }
+
+      // Téléchargement direct (SANS blob)
       const a = document.createElement("a");
       a.href = data.downloadUrl;
       a.download = data.filename || `video.${format === "mp3" ? "mp3" : "mp4"}`;
@@ -63,10 +84,9 @@ export default function Home() {
       setDownloading(null);
     }
   };
+
   return (
     <div className="min-h-screen flex flex-col">
-      
-      {/* ===== TOP BAR ===== */}
       <header className="sticky top-0 z-50 glass border-b border-white/40">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -85,10 +105,8 @@ export default function Home() {
           </div>
         </div>
       </header>
-      {/* ===== MAIN ===== */}
+
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-10">
-        
-        {/* Hero */}
         <div className="text-center mb-10 animate-fade-up">
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
             Téléchargeur moderne
@@ -98,7 +116,7 @@ export default function Home() {
             Colle un lien et télécharge en un clic.
           </p>
         </div>
-        {/* Search Card */}
+
         <div className="w-full max-w-xl animate-fade-up" style={{ animationDelay: "0.08s" }}>
           <div className="glass rounded-2xl p-2 shadow-xl shadow-slate-200/60">
             <div className="flex items-center gap-2">
@@ -128,7 +146,7 @@ export default function Home() {
               </button>
             </div>
           </div>
-          {/* Error */}
+
           {error && (
             <div className="mt-4 animate-scale-in glass rounded-xl px-4 py-3 text-sm text-red-600 flex items-center gap-2.5 border border-red-100">
               <svg className="w-4.5 h-4.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -138,7 +156,7 @@ export default function Home() {
             </div>
           )}
         </div>
-        {/* Skeleton */}
+
         {analyzing && (
           <div className="w-full max-w-xl mt-8 animate-scale-in">
             <div className="glass rounded-2xl overflow-hidden shadow-xl shadow-slate-200/50">
@@ -150,7 +168,7 @@ export default function Home() {
             </div>
           </div>
         )}
-        {/* Result Card */}
+
         {info && !analyzing && (
           <div className="w-full max-w-xl mt-8 animate-scale-in">
             <div className="glass rounded-2xl overflow-hidden shadow-xl shadow-slate-200/60">
@@ -168,6 +186,7 @@ export default function Home() {
                   />
                 </div>
               )}
+
               <div className="p-5 sm:p-6">
                 <h2 className="text-[17px] font-semibold text-slate-900 leading-snug line-clamp-2">
                   {info.title}
@@ -180,11 +199,12 @@ export default function Home() {
                     </span>
                   )}
                 </p>
+
                 <div className="mt-6 space-y-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                     Qualité
                   </p>
-                  
+
                   <div className="grid grid-cols-3 gap-2.5">
                     {["1080", "720", "480"].map((q) => (
                       <button
@@ -204,6 +224,7 @@ export default function Home() {
                       </button>
                     ))}
                   </div>
+
                   <button
                     onClick={() => download("mp3")}
                     disabled={!!downloading}
@@ -226,7 +247,7 @@ export default function Home() {
             </div>
           </div>
         )}
-        {/* Features (only when no result) */}
+
         {!info && !analyzing && (
           <div className="w-full max-w-3xl mt-16 grid grid-cols-2 sm:grid-cols-4 gap-3 animate-fade-up" style={{ animationDelay: "0.15s" }}>
             {[
@@ -243,7 +264,7 @@ export default function Home() {
           </div>
         )}
       </main>
-      {/* ===== FOOTER ===== */}
+
       <footer className="py-6 text-center text-xs text-slate-400">
         DL Media — Créé par Mohamed & Grok
       </footer>
