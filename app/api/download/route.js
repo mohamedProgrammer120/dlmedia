@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-const COBALT_API = process.env.COBALT_API || "https://cobalt-production-a71b.up.railway.app";
+const COBALT_API =
+  process.env.COBALT_API || "https://cobalt-production-a71b.up.railway.app";
 
 export async function POST(request) {
   try {
@@ -14,14 +15,30 @@ export async function POST(request) {
       );
     }
 
+    try {
+      new URL(url.trim());
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: "URL invalide." },
+        { status: 400 }
+      );
+    }
+
     const cobaltBody = {
       url: url.trim(),
-      videoQuality: quality,
-      downloadMode: "tunnel",
-      audioFormat: format === "mp3" ? "mp3" : "best",
       filenameStyle: "pretty",
-      youtubeVideoCodec: "h264",
+      disableMetadata: false,
     };
+
+    if (format === "mp3") {
+      cobaltBody.downloadMode = "audio";
+      cobaltBody.audioFormat = "mp3";
+      cobaltBody.audioBitrate = "128";
+    } else {
+      cobaltBody.downloadMode = "auto";
+      cobaltBody.videoQuality = quality;
+      cobaltBody.youtubeVideoCodec = "h264";
+    }
 
     const cobaltRes = await fetch(`${COBALT_API}/`, {
       method: "POST",
@@ -37,29 +54,35 @@ export async function POST(request) {
     const cobaltData = await cobaltRes.json();
 
     if (cobaltData.status === "error") {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: cobaltData.error?.text || "Erreur de téléchargement Cobalt.",
-        },
-        { status: 403 }
-      );
+      const msg =
+        cobaltData.error?.code === "error.api.youtube.login"
+          ? "YouTube demande une connexion. Cookies Cobalt expirés."
+          : cobaltData.error?.text ||
+            cobaltData.error?.code ||
+            "Erreur de téléchargement Cobalt.";
+
+      return NextResponse.json({ ok: false, error: msg }, { status: 403 });
     }
 
     let downloadUrl = null;
     let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
 
-    if (cobaltData.status === "tunnel" || cobaltData.status === "redirect" || cobaltData.status === "stream") {
+    if (
+      cobaltData.status === "tunnel" ||
+      cobaltData.status === "redirect" ||
+      cobaltData.status === "stream"
+    ) {
       downloadUrl = cobaltData.url;
       filename = cobaltData.filename || filename;
     } else if (cobaltData.status === "picker" && cobaltData.picker?.length > 0) {
-      downloadUrl = cobaltData.picker[0].url;
-      filename = cobaltData.picker[0].filename || filename;
+      const first = cobaltData.picker[0];
+      downloadUrl = first.url;
+      filename = first.filename || filename;
     }
 
     if (!downloadUrl) {
       return NextResponse.json(
-        { ok: false, error: "URL de téléchargement introuvable." },
+        { ok: false, error: "Impossible de récupérer le lien de téléchargement." },
         { status: 500 }
       );
     }
@@ -72,7 +95,7 @@ export async function POST(request) {
   } catch (err) {
     console.error("[download]", err);
     return NextResponse.json(
-      { ok: false, error: "Erreur serveur lors du traitement." },
+      { ok: false, error: "Erreur serveur lors du téléchargement." },
       { status: 500 }
     );
   }
