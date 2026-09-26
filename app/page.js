@@ -11,17 +11,26 @@ export default function Home() {
 
   const inputRef = useRef(null);
 
+  const cleanInputUrl = (rawUrl) => {
+    if (!rawUrl) return "";
+    const matched = rawUrl.match(/(https?:\/\/[^\s]+)/);
+    return matched ? matched[0] : rawUrl.trim();
+  };
+
   const handlePaste = useCallback((e) => {
     const pasted = e.clipboardData.getData("text").trim();
     if (pasted) {
-      setUrl(pasted);
-      setTimeout(() => analyze(pasted), 200);
+      const cleaned = cleanInputUrl(pasted);
+      setUrl(cleaned);
+      setTimeout(() => analyze(cleaned), 200);
     }
   }, []);
 
   const analyze = async (targetUrl = url) => {
-    if (!targetUrl.trim()) return;
+    const cleanedUrl = cleanInputUrl(targetUrl);
+    if (!cleanedUrl) return;
 
+    setUrl(cleanedUrl);
     setAnalyzing(true);
     setError(null);
     setInfo(null);
@@ -30,7 +39,7 @@ export default function Home() {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: targetUrl.trim() }),
+        body: JSON.stringify({ url: cleanedUrl }),
       });
 
       const data = await res.json();
@@ -60,16 +69,23 @@ export default function Home() {
       });
 
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Échec du téléchargement");
 
-      const a = document.createElement("a");
-      a.href = data.downloadUrl;
-      a.download = data.filename || `video.${format === "mp3" ? "mp3" : "mp4"}`;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Échec de récupération du lien de téléchargement.");
+      }
+
+      if (data.downloadUrl) {
+        const a = document.createElement("a");
+        a.href = data.downloadUrl;
+        a.download = data.filename || `media.${format === "mp3" ? "mp3" : "mp4"}`;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } else {
+        throw new Error("Lien de téléchargement introuvable.");
+      }
     } catch (err) {
       setError(err.message || "Erreur lors du téléchargement");
     } finally {
@@ -78,10 +94,8 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      
-      {/* ===== TOP BAR ===== */}
-      <header className="sticky top-0 z-50 glass border-b border-white/40">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
+      <header className="sticky top-0 z-50 glass border-b border-white/40 bg-white/80 backdrop-blur-md">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-200">
@@ -100,23 +114,19 @@ export default function Home() {
         </div>
       </header>
 
-      {/* ===== MAIN ===== */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-10">
-        
-        {/* Hero */}
-        <div className="text-center mb-10 animate-fade-up">
+        <div className="text-center mb-10">
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
             Téléchargeur moderne
           </h1>
           <p className="mt-3 text-slate-500 text-[15px] max-w-md mx-auto">
-            YouTube, TikTok, Instagram, Twitter…  
+            YouTube, TikTok, Instagram, Twitter…<br />
             Colle un lien et télécharge en un clic.
           </p>
         </div>
 
-        {/* Search Card */}
-        <div className="w-full max-w-xl animate-fade-up" style={{ animationDelay: "0.08s" }}>
-          <div className="glass rounded-2xl p-2 shadow-xl shadow-slate-200/60">
+        <div className="w-full max-w-xl">
+          <div className="glass rounded-2xl p-2 shadow-xl shadow-slate-200/60 bg-white border border-slate-100">
             <div className="flex items-center gap-2">
               <input
                 ref={inputRef}
@@ -145,9 +155,8 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Error */}
           {error && (
-            <div className="mt-4 animate-scale-in glass rounded-xl px-4 py-3 text-sm text-red-600 flex items-center gap-2.5 border border-red-100">
+            <div className="mt-4 glass rounded-xl px-4 py-3 text-sm text-red-600 flex items-center gap-2.5 border border-red-100 bg-red-50/50">
               <svg className="w-4.5 h-4.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -156,10 +165,9 @@ export default function Home() {
           )}
         </div>
 
-        {/* Skeleton */}
         {analyzing && (
-          <div className="w-full max-w-xl mt-8 animate-scale-in">
-            <div className="glass rounded-2xl overflow-hidden shadow-xl shadow-slate-200/50">
+          <div className="w-full max-w-xl mt-8">
+            <div className="glass rounded-2xl overflow-hidden shadow-xl shadow-slate-200/50 bg-white border border-slate-100">
               <div className="aspect-video bg-slate-100/80 animate-pulse" />
               <div className="p-5 space-y-3">
                 <div className="h-5 bg-slate-100 rounded-lg w-3/4 animate-pulse" />
@@ -169,10 +177,9 @@ export default function Home() {
           </div>
         )}
 
-        {/* Result Card */}
         {info && !analyzing && (
-          <div className="w-full max-w-xl mt-8 animate-scale-in">
-            <div className="glass rounded-2xl overflow-hidden shadow-xl shadow-slate-200/60">
+          <div className="w-full max-w-xl mt-8">
+            <div className="glass rounded-2xl overflow-hidden shadow-xl shadow-slate-200/60 bg-white border border-slate-100">
               {info.thumbnail && (
                 <div className="relative aspect-video bg-slate-100 overflow-hidden">
                   <img
@@ -212,7 +219,7 @@ export default function Home() {
                         key={q}
                         onClick={() => download("mp4", q)}
                         disabled={!!downloading}
-                        className="py-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-semibold transition-all active:scale-95 disabled:opacity-50"
+                        className="py-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-semibold transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center"
                       >
                         {downloading === `mp4-${q}` ? (
                           <svg className="animate-spin h-4 w-4 mx-auto" viewBox="0 0 24 24">
@@ -237,7 +244,7 @@ export default function Home() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
                         </svg>
-                        Préparation...
+                        Téléchargement en cours...
                       </>
                     ) : (
                       "Télécharger MP3"
@@ -248,26 +255,8 @@ export default function Home() {
             </div>
           </div>
         )}
-
-        {/* Features (only when no result) */}
-        {!info && !analyzing && (
-          <div className="w-full max-w-3xl mt-16 grid grid-cols-2 sm:grid-cols-4 gap-3 animate-fade-up" style={{ animationDelay: "0.15s" }}>
-            {[
-              { title: "Sans pub", icon: "🚫" },
-              { title: "Multi-plateformes", icon: "🌐" },
-              { title: "Direct", icon: "⚡" },
-              { title: "Privé", icon: "🔒" },
-            ].map((item, i) => (
-              <div key={i} className="glass rounded-xl py-4 px-3 text-center">
-                <div className="text-xl mb-1.5">{item.icon}</div>
-                <div className="text-xs font-medium text-slate-600">{item.title}</div>
-              </div>
-            ))}
-          </div>
-        )}
       </main>
 
-      {/* ===== FOOTER ===== */}
       <footer className="py-6 text-center text-xs text-slate-400">
         DL Media — Créé par Mohamed & Grok
       </footer>
