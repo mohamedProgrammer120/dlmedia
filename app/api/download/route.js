@@ -46,40 +46,28 @@ export async function POST(request) {
       );
     }
 
-    let targetUrl = null;
+    let downloadUrl = null;
     let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
 
     if (cobaltData.status === "tunnel" || cobaltData.status === "redirect" || cobaltData.status === "stream") {
-      targetUrl = cobaltData.url;
+      downloadUrl = cobaltData.url;
       filename = cobaltData.filename || filename;
     } else if (cobaltData.status === "picker" && cobaltData.picker?.length > 0) {
-      targetUrl = cobaltData.picker[0].url;
+      downloadUrl = cobaltData.picker[0].url;
       filename = cobaltData.picker[0].filename || filename;
     }
 
-    if (!targetUrl) {
+    if (!downloadUrl) {
       return NextResponse.json(
         { ok: false, error: "URL de téléchargement introuvable." },
         { status: 500 }
       );
     }
 
-    // Récupérer le flux binaire directement depuis le serveur Cobalt
-    const fileRes = await fetch(targetUrl);
-    
-    if (!fileRes.ok) {
-      return NextResponse.json(
-        { ok: false, error: "Impossible de récupérer le fichier binaire." },
-        { status: 502 }
-      );
-    }
-
-    // Renvoyer la réponse sous forme de fichier binaire téléchargeable
-    return new Response(fileRes.body, {
-      headers: {
-        "Content-Type": fileRes.headers.get("content-type") || "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
-      },
+    return NextResponse.json({
+      ok: true,
+      downloadUrl,
+      filename,
     });
   } catch (err) {
     console.error("[download]", err);
