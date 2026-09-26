@@ -11,14 +11,14 @@ export default function Home() {
 
   const inputRef = useRef(null);
 
-  // Nettoyage de l'URL entrée
+  // Nettoyage de l'URL
   const cleanInputUrl = (rawUrl) => {
     if (!rawUrl) return "";
     const matched = rawUrl.match(/(https?:\/\/[^\s]+)/);
     return matched ? matched[0] : rawUrl.trim();
   };
 
-  // Gestion du collage automatique
+  // Collage automatique
   const handlePaste = useCallback((e) => {
     const pasted = e.clipboardData.getData("text").trim();
     if (pasted) {
@@ -28,7 +28,7 @@ export default function Home() {
     }
   }, []);
 
-  // Analyse du lien
+  // Analyse
   const analyze = async (targetUrl = url) => {
     const cleanedUrl = cleanInputUrl(targetUrl);
     if (!cleanedUrl) return;
@@ -58,7 +58,7 @@ export default function Home() {
     }
   };
 
-  // Téléchargement binaire via Blob pour éviter les fichiers 0 octet
+  // Téléchargement direct sans surcharge serveur Vercel
   const download = async (format, quality = "1080") => {
     if (!info?.url) return;
 
@@ -72,35 +72,24 @@ export default function Home() {
         body: JSON.stringify({ url: info.url, format, quality }),
       });
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "Échec du téléchargement.");
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Échec de récupération du lien.");
       }
 
-      // Traitement du flux binaire sous forme de Blob
-      const blob = await res.blob();
-      if (blob.size === 0) {
-        throw new Error("Le fichier reçu est vide (0 octet).");
+      if (data.downloadUrl) {
+        const a = document.createElement("a");
+        a.href = data.downloadUrl;
+        a.download = data.filename || `media.${format === "mp3" ? "mp3" : "mp4"}`;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } else {
+        throw new Error("Lien introuvable.");
       }
-
-      // Extraction du nom de fichier depuis Content-Disposition s'il existe
-      const contentDisposition = res.headers.get("Content-Disposition");
-      let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
-      if (contentDisposition && contentDisposition.includes("filename=")) {
-        filename = decodeURIComponent(
-          contentDisposition.split("filename=")[1].replace(/"/g, "")
-        );
-      }
-
-      // Déclenchement du téléchargement navigateur
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = downloadUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(downloadUrl);
     } catch (err) {
       setError(err.message || "Erreur lors du téléchargement");
     } finally {
@@ -278,7 +267,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Features (seule en absence de résultat) */}
         {!info && !analyzing && (
           <div className="w-full max-w-3xl mt-16 grid grid-cols-2 sm:grid-cols-4 gap-3 animate-fade-up" style={{ animationDelay: "0.15s" }}>
             {[
