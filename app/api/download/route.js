@@ -3,12 +3,20 @@ import { NextResponse } from "next/server";
 const BACKEND_URL =
   process.env.UNIVERSAL_DOWNLOADER_URL || "http://localhost:3000";
 
+const COBALT_API =
+  process.env.COBALT_API || "https://bergung-api.hoffnungfuerdiezukunft.net";
+
 function getEndpoint(url) {
   const u = url.toLowerCase();
 
   if (u.includes("youtube.com") || u.includes("youtu.be")) return "/api/youtube/download";
   if (u.includes("tiktok.com")) return "/api/tiktok/download";
-  if (u.includes("instagram.com") || u.includes("facebook.com") || u.includes("fb.watch") || u.includes("fb.me")) {
+  if (
+    u.includes("instagram.com") ||
+    u.includes("facebook.com") ||
+    u.includes("fb.watch") ||
+    u.includes("fb.me")
+  ) {
     return "/api/meta/download";
   }
   if (u.includes("twitter.com") || u.includes("x.com")) return "/api/twitter/download";
@@ -24,22 +32,25 @@ function getEndpoint(url) {
   return null;
 }
 
-/**
- * Cherche récursivement un lien de téléchargement dans n'importe quelle structure
- */
+function isFacebook(url) {
+  const u = url.toLowerCase();
+  return (
+    u.includes("facebook.com") ||
+    u.includes("fb.watch") ||
+    u.includes("fb.me")
+  );
+}
+
 function findDownloadUrl(obj, preferVideo = true) {
   if (!obj) return null;
 
-  // Cas 1 : c'est déjà une string qui ressemble à une URL
   if (typeof obj === "string" && (obj.startsWith("http") || obj.startsWith("//"))) {
     return obj.startsWith("//") ? "https:" + obj : obj;
   }
 
   if (typeof obj !== "object") return null;
 
-  // Cas 2 : tableau
   if (Array.isArray(obj)) {
-    // On préfère les vidéos
     const videos = obj.filter(
       (item) =>
         item?.type === "video" ||
@@ -49,7 +60,10 @@ function findDownloadUrl(obj, preferVideo = true) {
         item?.resolution
     );
     const images = obj.filter(
-      (item) => item?.type === "image" || item?.url?.includes(".jpg") || item?.url?.includes(".webp")
+      (item) =>
+        item?.type === "image" ||
+        item?.url?.includes(".jpg") ||
+        item?.url?.includes(".webp")
     );
 
     const preferred = preferVideo
@@ -65,7 +79,6 @@ function findDownloadUrl(obj, preferVideo = true) {
       if (found) return found;
     }
 
-    // Sinon on prend le premier lien trouvé
     for (const item of obj) {
       const found = findDownloadUrl(item, preferVideo);
       if (found) return found;
@@ -73,7 +86,6 @@ function findDownloadUrl(obj, preferVideo = true) {
     return null;
   }
 
-  // Cas 3 : objet avec des clés connues
   const possibleKeys = [
     "url",
     "download",
@@ -93,7 +105,6 @@ function findDownloadUrl(obj, preferVideo = true) {
     }
   }
 
-  // Cas 4 : on regarde aussi les tableaux imbriqués
   if (obj.media) return findDownloadUrl(obj.media, preferVideo);
   if (obj.videos) return findDownloadUrl(obj.videos, preferVideo);
   if (obj.data) return findDownloadUrl(obj.data, preferVideo);
@@ -102,10 +113,71 @@ function findDownloadUrl(obj, preferVideo = true) {
   return null;
 }
 
+async function tryCobalt(url, format = "mp4", quality = "1080") {
+  const cobaltBody = {
+    url: url.trim(),
+    filenameStyle: "pretty",
+    disableMetadata: false,
+  };
+
+  if (format === "mp3") {
+    cobaltBody.downloadMode = "audio";
+    cobaltBody.audioFormat = "mp3";
+    cobaltBody.audioBitrate = "128";
+  } else {
+    cobaltBody.downloadMode = "auto";
+    cobaltBody.videoQuality = quality;
+    cobaltBody.youtubeVideoCodec = "h264";
+  }
+
+  const cobaltRes = await fetch(`${COBALT_API}/`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    },
+    body: JSON.stringify(cobaltBody),
+  });
+
+  const cobaltData = await cobaltRes.json();
+
+  if (cobaltData.status === "error") {
+    throw new Error(
+      cobaltData.error?.text ||
+        cobaltData.error?.code ||
+        "Erreur Cobalt"
+    );
+  }
+
+  let downloadUrl = null;
+  let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
+
+  if (
+    cobaltData.status === "tunnel" ||
+    cobaltData.status === "redirect" ||
+    cobaltData.status === "stream"
+  ) {
+    downloadUrl = cobaltData.url;
+    filename = cobaltData.filename || filename;
+  } else if (cobaltData.status === "picker" && cobaltData.picker?.length > 0) {
+    const first = cobaltData.picker[0];
+    downloadUrl = first.url;
+    filename = first.filename || filename;
+  }
+
+  if (!downloadUrl) {
+    throw new Error("Cobalt n’a renvoyé aucun lien de téléchargement");
+  }
+
+  return { downloadUrl, filename };
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { url, format = "mp4" } = body;
+    const { url, format = "mp4", quality = "1080" } = body;
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ ok: false, error: "URL manquante." }, { status: 400 });
@@ -132,69 +204,85 @@ export async function POST(request) {
       );
     }
 
-    const apiUrl = `${BACKEND_URL}${endpoint}?url=${encodeURIComponent(cleanUrl)}`;
+    let downloadUrl = null;
+    let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
+    let usedFallback = false;
 
-    const response = await fetch(apiUrl, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      },
-    });
+    // === 1. Essai universalDownloader ===
+    try {
+      const apiUrl = `${BACKEND_URL}${endpoint}?url=${encodeURIComponent(cleanUrl)}`;
 
-    const data = await response.json();
-
-    // Log pour debug (à enlever plus tard)
-    console.log("=== Réponse universalDownloader ===");
-    console.log(JSON.stringify(data, null, 2));
-
-    if (!response.ok || data.success === false) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: data.message || data.error || "Impossible d’analyser cette vidéo.",
+      const response = await fetch(apiUrl, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         },
-        { status: response.status || 500 }
-      );
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success !== false) {
+        downloadUrl = findDownloadUrl(data, format !== "mp3");
+
+        const title =
+          data?.data?.title ||
+          data?.data?.description ||
+          data?.title ||
+          data?.data?.[0]?.title ||
+          null;
+
+        if (title) {
+          const safe = title
+            .replace(/[^\w\s-]/g, "")
+            .trim()
+            .slice(0, 50);
+          if (safe) filename = `${safe}.${format === "mp3" ? "mp3" : "mp4"}`;
+        }
+      }
+    } catch (err) {
+      console.warn("[download] universalDownloader error:", err.message);
     }
 
-    // On cherche le lien dans toute la structure
-    const downloadUrl = findDownloadUrl(data, format !== "mp3");
+    // === 2. Fallback Cobalt UNIQUEMENT pour Facebook ===
+    if (!downloadUrl && isFacebook(cleanUrl)) {
+      try {
+        console.log("[download] Fallback Cobalt pour Facebook...");
+        const cobaltResult = await tryCobalt(cleanUrl, format, quality);
+        downloadUrl = cobaltResult.downloadUrl;
+        filename = cobaltResult.filename;
+        usedFallback = true;
+      } catch (err) {
+        console.error("[download] Cobalt fallback failed:", err.message);
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Impossible de télécharger cette vidéo Facebook (universalDownloader + Cobalt ont échoué).",
+          },
+          { status: 500 }
+        );
+      }
+    }
 
+    // === 3. Résultat final ===
     if (!downloadUrl) {
       return NextResponse.json(
         {
           ok: false,
           error:
-            "L’API a répondu mais aucun lien de téléchargement n’a pu être extrait. Vérifie la structure de la réponse.",
-          debug: data, // on renvoie la structure pour que tu puisses la voir
+            "L’API a répondu mais aucun lien de téléchargement n’a pu être extrait.",
         },
         { status: 500 }
       );
-    }
-
-    // Nom de fichier
-    let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
-    const title =
-      data?.data?.title ||
-      data?.data?.description ||
-      data?.title ||
-      data?.data?.[0]?.title ||
-      null;
-
-    if (title) {
-      const safe = title
-        .replace(/[^\w\s-]/g, "")
-        .trim()
-        .slice(0, 50);
-      if (safe) filename = `${safe}.${format === "mp3" ? "mp3" : "mp4"}`;
     }
 
     return NextResponse.json({
       ok: true,
       downloadUrl,
       filename,
+      source: usedFallback ? "cobalt" : "universalDownloader",
     });
   } catch (err) {
     console.error("[download]", err);
