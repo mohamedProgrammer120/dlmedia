@@ -39,30 +39,6 @@ function findDownloadUrl(obj, preferVideo = true) {
   if (typeof obj !== "object") return null;
 
   if (Array.isArray(obj)) {
-    const videos = obj.filter(
-      (item) =>
-        item?.type === "video" ||
-        item?.url?.includes(".mp4") ||
-        item?.url?.includes("video") ||
-        item?.quality ||
-        item?.resolution
-    );
-    const images = obj.filter(
-      (item) =>
-        item?.type === "image" ||
-        item?.url?.includes(".jpg") ||
-        item?.url?.includes(".webp")
-    );
-
-    const preferred = preferVideo
-      ? videos.length > 0 ? videos : images
-      : images.length > 0 ? images : videos;
-
-    for (const item of preferred) {
-      const found = findDownloadUrl(item, preferVideo);
-      if (found) return found;
-    }
-
     for (const item of obj) {
       const found = findDownloadUrl(item, preferVideo);
       if (found) return found;
@@ -71,7 +47,16 @@ function findDownloadUrl(obj, preferVideo = true) {
   }
 
   const possibleKeys = [
-    "url", "download", "downloadUrl", "link", "video", "videoUrl", "src", "media", "file",
+    "url",
+    "download",
+    "downloadUrl",
+    "link",
+    "video",
+    "videoUrl",
+    "src",
+    "media",
+    "file",
+    "download_url",
   ];
 
   for (const key of possibleKeys) {
@@ -85,8 +70,39 @@ function findDownloadUrl(obj, preferVideo = true) {
   if (obj.videos) return findDownloadUrl(obj.videos, preferVideo);
   if (obj.data) return findDownloadUrl(obj.data, preferVideo);
   if (obj.files) return findDownloadUrl(obj.files, preferVideo);
+  if (obj.downloads) return findDownloadUrl(obj.downloads, preferVideo);
 
   return null;
+}
+
+/**
+ * Essaie de résoudre les liens Facebook /share/ vers l'URL finale
+ */
+async function resolveFacebookShareUrl(url) {
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+
+    // L'URL finale après redirections
+    const finalUrl = response.url;
+
+    if (finalUrl && finalUrl !== url) {
+      console.log("[resolve] Facebook share resolved to:", finalUrl);
+      return finalUrl;
+    }
+
+    return url;
+  } catch (err) {
+    console.error("[resolve] Failed to resolve share URL:", err.message);
+    return url; // on garde l'URL originale en cas d'échec
+  }
 }
 
 export async function POST(request) {
@@ -98,12 +114,22 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, error: "URL manquante." }, { status: 400 });
     }
 
-    const cleanUrl = url.trim();
+    let cleanUrl = url.trim();
 
     try {
       new URL(cleanUrl);
     } catch {
       return NextResponse.json({ ok: false, error: "URL invalide." }, { status: 400 });
+    }
+
+    // Si c'est un lien Facebook /share/, on essaie de le résoudre
+    const isFacebookShare =
+      cleanUrl.includes("facebook.com/share/") ||
+      cleanUrl.includes("fb.watch") ||
+      cleanUrl.includes("fb.me");
+
+    if (isFacebookShare) {
+      cleanUrl = await resolveFacebookShareUrl(cleanUrl);
     }
 
     const endpoint = getEndpoint(cleanUrl);
@@ -133,27 +159,37 @@ export async function POST(request) {
 
     const data = await response.json();
 
-    if (!response.ok || data.success === false) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: data.message || data.error || "Impossible d’analyser cette vidéo.",
-        },
-        { status: response.status || 500 }
-      );
+    if (!response.ok || data.success === false || data?.data?.status === false) {
+      const errorMsg =
+        data?.data?.msg ||
+        data?.message ||
+        data?.error ||
+        "Impossible d’analyser cette vidéo.";
+
+      // Message spécial pour les liens share qui échouent encore
+      if (isFacebookShare) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Ce lien Facebook /share/ n’a pas pu être téléchargé. Essayez plutôt un lien de type Reel (facebook.com/reel/...) ou watch (facebook.com/watch/?v=...).",
+          },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({ ok: false, error: errorMsg }, { status: response.status || 500 });
     }
 
     const downloadUrl = findDownloadUrl(data, format !== "mp3");
 
     if (!downloadUrl) {
-      // Message plus clair pour les liens Facebook share
-      const isShareLink = cleanUrl.includes("/share/");
       return NextResponse.json(
         {
           ok: false,
-          error: isShareLink
-            ? "Les liens Facebook de type /share/ sont souvent bloqués. Essaie plutôt un lien de Reel ou de vidéo directe (facebook.com/reel/... ou facebook.com/watch/?v=...)."
-            : "L’API a répondu mais aucun lien de téléchargement n’a pu être extrait.",
+          error: isFacebookShare
+            ? "Lien Facebook /share/ non supporté correctement. Utilisez un lien Reel ou watch direct."
+            : "Aucun lien de téléchargement n’a pu être extrait pour cette vidéo.",
         },
         { status: 500 }
       );
@@ -177,6 +213,7 @@ export async function POST(request) {
       downloadUrl,
       filename,
       source: "universalDownloader",
+      resolvedUrl: isFacebookShare ? cleanUrl : undefined,
     });
   } catch (err) {
     console.error("[download]", err);
