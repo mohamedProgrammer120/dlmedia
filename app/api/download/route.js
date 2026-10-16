@@ -3,8 +3,12 @@ import { NextResponse } from "next/server";
 const BACKEND_URL =
   process.env.UNIVERSAL_DOWNLOADER_URL || "http://localhost:3000";
 
-const COBALT_API =
-  process.env.COBALT_API || "https://bergung-api.hoffnungfuerdiezukunft.net";
+// Liste d'instances Cobalt (ordre de priorité)
+const COBALT_INSTANCES = [
+  process.env.COBALT_API || "https://bergung-api.hoffnungfuerdiezukunft.net",
+  "https://cobalt-alpha.wolfy.love",
+  "https://nuko-c.meowing.de",
+].filter(Boolean);
 
 function getEndpoint(url) {
   const u = url.toLowerCase();
@@ -34,11 +38,7 @@ function getEndpoint(url) {
 
 function isFacebook(url) {
   const u = url.toLowerCase();
-  return (
-    u.includes("facebook.com") ||
-    u.includes("fb.watch") ||
-    u.includes("fb.me")
-  );
+  return u.includes("facebook.com") || u.includes("fb.watch") || u.includes("fb.me");
 }
 
 function findDownloadUrl(obj, preferVideo = true) {
@@ -67,12 +67,8 @@ function findDownloadUrl(obj, preferVideo = true) {
     );
 
     const preferred = preferVideo
-      ? videos.length > 0
-        ? videos
-        : images
-      : images.length > 0
-      ? images
-      : videos;
+      ? videos.length > 0 ? videos : images
+      : images.length > 0 ? images : videos;
 
     for (const item of preferred) {
       const found = findDownloadUrl(item, preferVideo);
@@ -86,17 +82,7 @@ function findDownloadUrl(obj, preferVideo = true) {
     return null;
   }
 
-  const possibleKeys = [
-    "url",
-    "download",
-    "downloadUrl",
-    "link",
-    "video",
-    "videoUrl",
-    "src",
-    "media",
-    "file",
-  ];
+  const possibleKeys = ["url", "download", "downloadUrl", "link", "video", "videoUrl", "src", "media", "file"];
 
   for (const key of possibleKeys) {
     if (obj[key]) {
@@ -130,48 +116,59 @@ async function tryCobalt(url, format = "mp4", quality = "1080") {
     cobaltBody.youtubeVideoCodec = "h264";
   }
 
-  const cobaltRes = await fetch(`${COBALT_API}/`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    },
-    body: JSON.stringify(cobaltBody),
-  });
+  let lastError = "Aucune instance Cobalt n’a fonctionné";
 
-  const cobaltData = await cobaltRes.json();
+  for (const instance of COBALT_INSTANCES) {
+    try {
+      const cobaltRes = await fetch(`${instance}/`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        },
+        body: JSON.stringify(cobaltBody),
+        signal: AbortSignal.timeout(15000),
+      });
 
-  if (cobaltData.status === "error") {
-    throw new Error(
-      cobaltData.error?.text ||
-        cobaltData.error?.code ||
-        "Erreur Cobalt"
-    );
+      const cobaltData = await cobaltRes.json();
+
+      if (cobaltData.status === "error") {
+        lastError = cobaltData.error?.text || cobaltData.error?.code || "Erreur Cobalt";
+        console.warn(`[Cobalt] ${instance} → ${lastError}`);
+        continue; // on essaie la suivante
+      }
+
+      let downloadUrl = null;
+      let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
+
+      if (
+        cobaltData.status === "tunnel" ||
+        cobaltData.status === "redirect" ||
+        cobaltData.status === "stream"
+      ) {
+        downloadUrl = cobaltData.url;
+        filename = cobaltData.filename || filename;
+      } else if (cobaltData.status === "picker" && cobaltData.picker?.length > 0) {
+        const first = cobaltData.picker[0];
+        downloadUrl = first.url;
+        filename = first.filename || filename;
+      }
+
+      if (downloadUrl) {
+        console.log(`[Cobalt] Succès avec ${instance}`);
+        return { downloadUrl, filename, instance };
+      }
+
+      lastError = "Cobalt n’a renvoyé aucun lien";
+    } catch (err) {
+      lastError = err.message;
+      console.warn(`[Cobalt] ${instance} → ${err.message}`);
+    }
   }
 
-  let downloadUrl = null;
-  let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
-
-  if (
-    cobaltData.status === "tunnel" ||
-    cobaltData.status === "redirect" ||
-    cobaltData.status === "stream"
-  ) {
-    downloadUrl = cobaltData.url;
-    filename = cobaltData.filename || filename;
-  } else if (cobaltData.status === "picker" && cobaltData.picker?.length > 0) {
-    const first = cobaltData.picker[0];
-    downloadUrl = first.url;
-    filename = first.filename || filename;
-  }
-
-  if (!downloadUrl) {
-    throw new Error("Cobalt n’a renvoyé aucun lien de téléchargement");
-  }
-
-  return { downloadUrl, filename };
+  throw new Error(lastError);
 }
 
 export async function POST(request) {
@@ -207,6 +204,7 @@ export async function POST(request) {
     let downloadUrl = null;
     let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
     let usedFallback = false;
+    let usedInstance = null;
 
     // === 1. Essai universalDownloader ===
     try {
@@ -219,6 +217,7 @@ export async function POST(request) {
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         },
+        signal: AbortSignal.timeout(12000),
       });
 
       const data = await response.json();
@@ -234,10 +233,7 @@ export async function POST(request) {
           null;
 
         if (title) {
-          const safe = title
-            .replace(/[^\w\s-]/g, "")
-            .trim()
-            .slice(0, 50);
+          const safe = title.replace(/[^\w\s-]/g, "").trim().slice(0, 50);
           if (safe) filename = `${safe}.${format === "mp3" ? "mp3" : "mp4"}`;
         }
       }
@@ -252,27 +248,25 @@ export async function POST(request) {
         const cobaltResult = await tryCobalt(cleanUrl, format, quality);
         downloadUrl = cobaltResult.downloadUrl;
         filename = cobaltResult.filename;
+        usedInstance = cobaltResult.instance;
         usedFallback = true;
       } catch (err) {
         console.error("[download] Cobalt fallback failed:", err.message);
         return NextResponse.json(
           {
             ok: false,
-            error:
-              "Impossible de télécharger cette vidéo Facebook (universalDownloader + Cobalt ont échoué).",
+            error: `Impossible de télécharger cette vidéo Facebook. Dernière erreur : ${err.message}`,
           },
           { status: 500 }
         );
       }
     }
 
-    // === 3. Résultat final ===
     if (!downloadUrl) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            "L’API a répondu mais aucun lien de téléchargement n’a pu être extrait.",
+          error: "L’API a répondu mais aucun lien de téléchargement n’a pu être extrait.",
         },
         { status: 500 }
       );
@@ -283,6 +277,7 @@ export async function POST(request) {
       downloadUrl,
       filename,
       source: usedFallback ? "cobalt" : "universalDownloader",
+      instance: usedInstance || null,
     });
   } catch (err) {
     console.error("[download]", err);
