@@ -3,13 +3,6 @@ import { NextResponse } from "next/server";
 const BACKEND_URL =
   process.env.UNIVERSAL_DOWNLOADER_URL || "http://localhost:3000";
 
-// Liste d'instances Cobalt (ordre de priorité)
-const COBALT_INSTANCES = [
-  process.env.COBALT_API || "https://bergung-api.hoffnungfuerdiezukunft.net",
-  "https://cobalt-alpha.wolfy.love",
-  "https://nuko-c.meowing.de",
-].filter(Boolean);
-
 function getEndpoint(url) {
   const u = url.toLowerCase();
 
@@ -34,11 +27,6 @@ function getEndpoint(url) {
   if (u.includes("snapchat.com")) return "/api/snapchat/download";
 
   return null;
-}
-
-function isFacebook(url) {
-  const u = url.toLowerCase();
-  return u.includes("facebook.com") || u.includes("fb.watch") || u.includes("fb.me");
 }
 
 function findDownloadUrl(obj, preferVideo = true) {
@@ -82,7 +70,9 @@ function findDownloadUrl(obj, preferVideo = true) {
     return null;
   }
 
-  const possibleKeys = ["url", "download", "downloadUrl", "link", "video", "videoUrl", "src", "media", "file"];
+  const possibleKeys = [
+    "url", "download", "downloadUrl", "link", "video", "videoUrl", "src", "media", "file",
+  ];
 
   for (const key of possibleKeys) {
     if (obj[key]) {
@@ -99,82 +89,10 @@ function findDownloadUrl(obj, preferVideo = true) {
   return null;
 }
 
-async function tryCobalt(url, format = "mp4", quality = "1080") {
-  const cobaltBody = {
-    url: url.trim(),
-    filenameStyle: "pretty",
-    disableMetadata: false,
-  };
-
-  if (format === "mp3") {
-    cobaltBody.downloadMode = "audio";
-    cobaltBody.audioFormat = "mp3";
-    cobaltBody.audioBitrate = "128";
-  } else {
-    cobaltBody.downloadMode = "auto";
-    cobaltBody.videoQuality = quality;
-    cobaltBody.youtubeVideoCodec = "h264";
-  }
-
-  let lastError = "Aucune instance Cobalt n’a fonctionné";
-
-  for (const instance of COBALT_INSTANCES) {
-    try {
-      const cobaltRes = await fetch(`${instance}/`, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        },
-        body: JSON.stringify(cobaltBody),
-        signal: AbortSignal.timeout(15000),
-      });
-
-      const cobaltData = await cobaltRes.json();
-
-      if (cobaltData.status === "error") {
-        lastError = cobaltData.error?.text || cobaltData.error?.code || "Erreur Cobalt";
-        console.warn(`[Cobalt] ${instance} → ${lastError}`);
-        continue; // on essaie la suivante
-      }
-
-      let downloadUrl = null;
-      let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
-
-      if (
-        cobaltData.status === "tunnel" ||
-        cobaltData.status === "redirect" ||
-        cobaltData.status === "stream"
-      ) {
-        downloadUrl = cobaltData.url;
-        filename = cobaltData.filename || filename;
-      } else if (cobaltData.status === "picker" && cobaltData.picker?.length > 0) {
-        const first = cobaltData.picker[0];
-        downloadUrl = first.url;
-        filename = first.filename || filename;
-      }
-
-      if (downloadUrl) {
-        console.log(`[Cobalt] Succès avec ${instance}`);
-        return { downloadUrl, filename, instance };
-      }
-
-      lastError = "Cobalt n’a renvoyé aucun lien";
-    } catch (err) {
-      lastError = err.message;
-      console.warn(`[Cobalt] ${instance} → ${err.message}`);
-    }
-  }
-
-  throw new Error(lastError);
-}
-
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { url, format = "mp4", quality = "1080" } = body;
+    const { url, format = "mp4" } = body;
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ ok: false, error: "URL manquante." }, { status: 400 });
@@ -201,83 +119,64 @@ export async function POST(request) {
       );
     }
 
-    let downloadUrl = null;
-    let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
-    let usedFallback = false;
-    let usedInstance = null;
+    const apiUrl = `${BACKEND_URL}${endpoint}?url=${encodeURIComponent(cleanUrl)}`;
 
-    // === 1. Essai universalDownloader ===
-    try {
-      const apiUrl = `${BACKEND_URL}${endpoint}?url=${encodeURIComponent(cleanUrl)}`;
+    const response = await fetch(apiUrl, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(15000),
+    });
 
-      const response = await fetch(apiUrl, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        },
-        signal: AbortSignal.timeout(12000),
-      });
+    const data = await response.json();
 
-      const data = await response.json();
-
-      if (response.ok && data.success !== false) {
-        downloadUrl = findDownloadUrl(data, format !== "mp3");
-
-        const title =
-          data?.data?.title ||
-          data?.data?.description ||
-          data?.title ||
-          data?.data?.[0]?.title ||
-          null;
-
-        if (title) {
-          const safe = title.replace(/[^\w\s-]/g, "").trim().slice(0, 50);
-          if (safe) filename = `${safe}.${format === "mp3" ? "mp3" : "mp4"}`;
-        }
-      }
-    } catch (err) {
-      console.warn("[download] universalDownloader error:", err.message);
-    }
-
-    // === 2. Fallback Cobalt UNIQUEMENT pour Facebook ===
-    if (!downloadUrl && isFacebook(cleanUrl)) {
-      try {
-        console.log("[download] Fallback Cobalt pour Facebook...");
-        const cobaltResult = await tryCobalt(cleanUrl, format, quality);
-        downloadUrl = cobaltResult.downloadUrl;
-        filename = cobaltResult.filename;
-        usedInstance = cobaltResult.instance;
-        usedFallback = true;
-      } catch (err) {
-        console.error("[download] Cobalt fallback failed:", err.message);
-        return NextResponse.json(
-          {
-            ok: false,
-            error: `Impossible de télécharger cette vidéo Facebook. Dernière erreur : ${err.message}`,
-          },
-          { status: 500 }
-        );
-      }
-    }
-
-    if (!downloadUrl) {
+    if (!response.ok || data.success === false) {
       return NextResponse.json(
         {
           ok: false,
-          error: "L’API a répondu mais aucun lien de téléchargement n’a pu être extrait.",
+          error: data.message || data.error || "Impossible d’analyser cette vidéo.",
+        },
+        { status: response.status || 500 }
+      );
+    }
+
+    const downloadUrl = findDownloadUrl(data, format !== "mp3");
+
+    if (!downloadUrl) {
+      // Message plus clair pour les liens Facebook share
+      const isShareLink = cleanUrl.includes("/share/");
+      return NextResponse.json(
+        {
+          ok: false,
+          error: isShareLink
+            ? "Les liens Facebook de type /share/ sont souvent bloqués. Essaie plutôt un lien de Reel ou de vidéo directe (facebook.com/reel/... ou facebook.com/watch/?v=...)."
+            : "L’API a répondu mais aucun lien de téléchargement n’a pu être extrait.",
         },
         { status: 500 }
       );
+    }
+
+    let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
+    const title =
+      data?.data?.title ||
+      data?.data?.description ||
+      data?.title ||
+      data?.data?.[0]?.title ||
+      null;
+
+    if (title) {
+      const safe = title.replace(/[^\w\s-]/g, "").trim().slice(0, 50);
+      if (safe) filename = `${safe}.${format === "mp3" ? "mp3" : "mp4"}`;
     }
 
     return NextResponse.json({
       ok: true,
       downloadUrl,
       filename,
-      source: usedFallback ? "cobalt" : "universalDownloader",
-      instance: usedInstance || null,
+      source: "universalDownloader",
     });
   } catch (err) {
     console.error("[download]", err);
