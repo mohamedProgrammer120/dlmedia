@@ -3,50 +3,102 @@ import { NextResponse } from "next/server";
 const BACKEND_URL =
   process.env.UNIVERSAL_DOWNLOADER_URL || "http://localhost:3000";
 
-/**
- * Détecte la plateforme et retourne le bon endpoint universalDownloader
- */
 function getEndpoint(url) {
   const u = url.toLowerCase();
 
-  if (u.includes("youtube.com") || u.includes("youtu.be")) {
-    return "/api/youtube/download";
-  }
-  if (u.includes("tiktok.com")) {
-    return "/api/tiktok/download";
-  }
-  if (u.includes("instagram.com") || u.includes("facebook.com") || u.includes("fb.watch")) {
+  if (u.includes("youtube.com") || u.includes("youtu.be")) return "/api/youtube/download";
+  if (u.includes("tiktok.com")) return "/api/tiktok/download";
+  if (u.includes("instagram.com") || u.includes("facebook.com") || u.includes("fb.watch") || u.includes("fb.me")) {
     return "/api/meta/download";
   }
-  if (u.includes("twitter.com") || u.includes("x.com")) {
-    return "/api/twitter/download";
-  }
-  if (u.includes("reddit.com")) {
-    return "/api/reddit/download";
-  }
-  if (u.includes("pinterest.")) {
-    return "/api/pinterest/download";
-  }
-  if (u.includes("threads.net")) {
-    return "/api/threads/download";
-  }
-  if (u.includes("soundcloud.com")) {
-    return "/api/soundcloud/download";
-  }
-  if (u.includes("spotify.com")) {
-    return "/api/spotify/download";
-  }
-  if (u.includes("tumblr.com")) {
-    return "/api/tumblr/download";
-  }
-  if (u.includes("linkedin.com")) {
-    return "/api/linkedin/download";
-  }
-  if (u.includes("snapchat.com")) {
-    return "/api/snapchat/download";
+  if (u.includes("twitter.com") || u.includes("x.com")) return "/api/twitter/download";
+  if (u.includes("reddit.com")) return "/api/reddit/download";
+  if (u.includes("pinterest.")) return "/api/pinterest/download";
+  if (u.includes("threads.net")) return "/api/threads/download";
+  if (u.includes("soundcloud.com")) return "/api/soundcloud/download";
+  if (u.includes("spotify.com")) return "/api/spotify/download";
+  if (u.includes("tumblr.com")) return "/api/tumblr/download";
+  if (u.includes("linkedin.com")) return "/api/linkedin/download";
+  if (u.includes("snapchat.com")) return "/api/snapchat/download";
+
+  return null;
+}
+
+/**
+ * Cherche récursivement un lien de téléchargement dans n'importe quelle structure
+ */
+function findDownloadUrl(obj, preferVideo = true) {
+  if (!obj) return null;
+
+  // Cas 1 : c'est déjà une string qui ressemble à une URL
+  if (typeof obj === "string" && (obj.startsWith("http") || obj.startsWith("//"))) {
+    return obj.startsWith("//") ? "https:" + obj : obj;
   }
 
-  // Fallback générique (peut échouer selon la plateforme)
+  if (typeof obj !== "object") return null;
+
+  // Cas 2 : tableau
+  if (Array.isArray(obj)) {
+    // On préfère les vidéos
+    const videos = obj.filter(
+      (item) =>
+        item?.type === "video" ||
+        item?.url?.includes(".mp4") ||
+        item?.url?.includes("video") ||
+        item?.quality ||
+        item?.resolution
+    );
+    const images = obj.filter(
+      (item) => item?.type === "image" || item?.url?.includes(".jpg") || item?.url?.includes(".webp")
+    );
+
+    const preferred = preferVideo
+      ? videos.length > 0
+        ? videos
+        : images
+      : images.length > 0
+      ? images
+      : videos;
+
+    for (const item of preferred) {
+      const found = findDownloadUrl(item, preferVideo);
+      if (found) return found;
+    }
+
+    // Sinon on prend le premier lien trouvé
+    for (const item of obj) {
+      const found = findDownloadUrl(item, preferVideo);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  // Cas 3 : objet avec des clés connues
+  const possibleKeys = [
+    "url",
+    "download",
+    "downloadUrl",
+    "link",
+    "video",
+    "videoUrl",
+    "src",
+    "media",
+    "file",
+  ];
+
+  for (const key of possibleKeys) {
+    if (obj[key]) {
+      const found = findDownloadUrl(obj[key], preferVideo);
+      if (found) return found;
+    }
+  }
+
+  // Cas 4 : on regarde aussi les tableaux imbriqués
+  if (obj.media) return findDownloadUrl(obj.media, preferVideo);
+  if (obj.videos) return findDownloadUrl(obj.videos, preferVideo);
+  if (obj.data) return findDownloadUrl(obj.data, preferVideo);
+  if (obj.files) return findDownloadUrl(obj.files, preferVideo);
+
   return null;
 }
 
@@ -56,10 +108,7 @@ export async function POST(request) {
     const { url, format = "mp4" } = body;
 
     if (!url || typeof url !== "string") {
-      return NextResponse.json(
-        { ok: false, error: "URL manquante." },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "URL manquante." }, { status: 400 });
     }
 
     const cleanUrl = url.trim();
@@ -67,10 +116,7 @@ export async function POST(request) {
     try {
       new URL(cleanUrl);
     } catch {
-      return NextResponse.json(
-        { ok: false, error: "URL invalide." },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "URL invalide." }, { status: 400 });
     }
 
     const endpoint = getEndpoint(cleanUrl);
@@ -80,13 +126,12 @@ export async function POST(request) {
         {
           ok: false,
           error:
-            "Plateforme non prise en charge pour le moment. Supportées : YouTube, TikTok, Instagram, Twitter/X, Reddit, Pinterest, Threads…",
+            "Plateforme non prise en charge. Supportées : YouTube, TikTok, Instagram, Facebook, Twitter/X, Reddit, Pinterest, Threads…",
         },
         { status: 400 }
       );
     }
 
-    // Appel vers ton serveur Deno
     const apiUrl = `${BACKEND_URL}${endpoint}?url=${encodeURIComponent(cleanUrl)}`;
 
     const response = await fetch(apiUrl, {
@@ -100,7 +145,11 @@ export async function POST(request) {
 
     const data = await response.json();
 
-    if (!response.ok || !data.success) {
+    // Log pour debug (à enlever plus tard)
+    console.log("=== Réponse universalDownloader ===");
+    console.log(JSON.stringify(data, null, 2));
+
+    if (!response.ok || data.success === false) {
       return NextResponse.json(
         {
           ok: false,
@@ -110,57 +159,42 @@ export async function POST(request) {
       );
     }
 
-    // Extraction du lien de téléchargement selon la structure de l’API
-    // universalDownloader renvoie généralement data.data avec plusieurs formats
-    const mediaData = data.data || data;
-
-    let downloadUrl = null;
-    let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
-
-    // Cas les plus courants selon les plateformes
-    if (Array.isArray(mediaData)) {
-      // Parfois un tableau de médias
-      const video = mediaData.find((m) => m.type === "video" || m.url?.includes(".mp4"));
-      const audio = mediaData.find((m) => m.type === "audio" || m.url?.includes(".mp3"));
-      downloadUrl = format === "mp3" ? (audio?.url || video?.url) : (video?.url || mediaData[0]?.url);
-    } else if (mediaData.videos && mediaData.videos.length > 0) {
-      downloadUrl = mediaData.videos[0].url;
-    } else if (mediaData.video) {
-      downloadUrl = mediaData.video;
-    } else if (mediaData.url) {
-      downloadUrl = mediaData.url;
-    } else if (mediaData.download) {
-      downloadUrl = mediaData.download;
-    } else if (mediaData.media?.url) {
-      downloadUrl = mediaData.media.url;
-    }
-
-    // Tentative de récupérer un nom de fichier correct
-    if (mediaData.title) {
-      const safeTitle = mediaData.title
-        .replace(/[^\w\s-]/g, "")
-        .trim()
-        .slice(0, 60);
-      filename = `${safeTitle || "media"}.${format === "mp3" ? "mp3" : "mp4"}`;
-    }
+    // On cherche le lien dans toute la structure
+    const downloadUrl = findDownloadUrl(data, format !== "mp3");
 
     if (!downloadUrl) {
-      console.error("Structure reçue de universalDownloader :", JSON.stringify(data, null, 2));
       return NextResponse.json(
         {
           ok: false,
           error:
             "L’API a répondu mais aucun lien de téléchargement n’a pu être extrait. Vérifie la structure de la réponse.",
+          debug: data, // on renvoie la structure pour que tu puisses la voir
         },
         { status: 500 }
       );
+    }
+
+    // Nom de fichier
+    let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
+    const title =
+      data?.data?.title ||
+      data?.data?.description ||
+      data?.title ||
+      data?.data?.[0]?.title ||
+      null;
+
+    if (title) {
+      const safe = title
+        .replace(/[^\w\s-]/g, "")
+        .trim()
+        .slice(0, 50);
+      if (safe) filename = `${safe}.${format === "mp3" ? "mp3" : "mp4"}`;
     }
 
     return NextResponse.json({
       ok: true,
       downloadUrl,
       filename,
-      raw: mediaData, // utile pour debug
     });
   } catch (err) {
     console.error("[download]", err);
