@@ -29,40 +29,6 @@ function getEndpoint(url) {
   return null;
 }
 
-function extractFromMeta(data, originalUrl) {
-  const items = data?.data?.data || data?.data || [];
-
-  if (!Array.isArray(items) || items.length === 0) {
-    return null;
-  }
-
-  // Miniature (la première disponible)
-  const thumbnail = items.find((i) => i.thumbnail)?.thumbnail || null;
-
-  // Liste des qualités disponibles
-  const qualities = items
-    .filter((i) => i.resolution)
-    .map((i) => ({
-      resolution: i.resolution,
-      hasUrl: !!i.url,
-      shouldRender: i.shouldRender || false,
-    }));
-
-  // Titre générique (cette API ne renvoie pas de vrai titre)
-  let title = "Vidéo Facebook";
-  if (originalUrl.includes("instagram.com")) title = "Vidéo Instagram";
-  if (originalUrl.includes("reel")) title = "Reel";
-
-  return {
-    title,
-    author: "Facebook / Instagram",
-    thumbnail,
-    platform: originalUrl.includes("instagram") ? "instagram" : "facebook",
-    qualities,
-    rawItems: items, // utile pour le download
-  };
-}
-
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -80,6 +46,56 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, error: "URL invalide." }, { status: 400 });
     }
 
+    // ======================
+    // CAS SPÉCIAL YOUTUBE (oEmbed = très fiable)
+    // ======================
+    const isYoutube = /youtube\.com|youtu\.be/i.test(cleanUrl);
+
+    if (isYoutube) {
+      try {
+        const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(
+          cleanUrl
+        )}&format=json`;
+
+        const oembedRes = await fetch(oembedUrl, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          },
+          signal: AbortSignal.timeout(8000),
+        });
+
+        if (oembedRes.ok) {
+          const data = await oembedRes.json();
+
+          // Récupérer l'ID de la vidéo pour la miniature HD
+          const videoIdMatch = cleanUrl.match(
+            /(?:v=|youtu\.be\/|shorts\/|embed\/)([a-zA-Z0-9_-]{11})/
+          );
+          const videoId = videoIdMatch?.[1];
+
+          return NextResponse.json({
+            ok: true,
+            title: data.title || "Vidéo YouTube",
+            author: data.author_name || "YouTube",
+            thumbnail:
+              data.thumbnail_url?.replace("hqdefault", "maxresdefault") ||
+              (videoId
+                ? `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`
+                : null),
+            platform: "youtube",
+            url: cleanUrl,
+            videoId,
+          });
+        }
+      } catch (err) {
+        console.warn("[analyze] YouTube oEmbed failed:", err.message);
+      }
+    }
+
+    // ======================
+    // AUTRES PLATEFORMES → universalDownloader
+    // ======================
     const endpoint = getEndpoint(cleanUrl);
 
     if (!endpoint) {
@@ -105,28 +121,31 @@ export async function POST(request) {
 
     if (!response.ok || data.success === false) {
       return NextResponse.json(
-        { ok: false, error: data.message || data.error || "Impossible d’analyser cette vidéo." },
+        {
+          ok: false,
+          error: data.message || data.error || "Impossible d’analyser cette vidéo.",
+        },
         { status: response.status || 500 }
       );
     }
 
-    // Cas spécial Facebook / Instagram (structure metadownloader)
+    // Extraction pour Facebook/Instagram
     if (endpoint === "/api/meta/download") {
-      const meta = extractFromMeta(data, cleanUrl);
-      if (meta) {
-        return NextResponse.json({
-          ok: true,
-          title: meta.title,
-          author: meta.author,
-          thumbnail: meta.thumbnail,
-          platform: meta.platform,
-          qualities: meta.qualities,
-          url: cleanUrl,
-        });
-      }
+      const items = data?.data?.data || [];
+      const thumbnail = items.find((i) => i.thumbnail)?.thumbnail || null;
+
+      return NextResponse.json({
+        ok: true,
+        title: cleanUrl.includes("instagram") ? "Vidéo Instagram" : "Vidéo Facebook",
+        author: "Facebook / Instagram",
+        thumbnail,
+        platform: cleanUrl.includes("instagram") ? "instagram" : "facebook",
+        url: cleanUrl,
+        qualities: items.map((i) => i.resolution).filter(Boolean),
+      });
     }
 
-    // Fallback générique pour les autres plateformes
+    // Fallback générique
     const media = data.data || data;
     return NextResponse.json({
       ok: true,
