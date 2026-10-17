@@ -3,10 +3,13 @@ import { NextResponse } from "next/server";
 const BACKEND_URL =
   process.env.UNIVERSAL_DOWNLOADER_URL || "http://localhost:3000";
 
+const COBALT_API =
+  process.env.COBALT_API || "https://cobalt-production-a71b.up.railway.app";
+
 function getEndpoint(url) {
   const u = url.toLowerCase();
 
-  if (u.includes("youtube.com") || u.includes("youtu.be")) return "/api/youtube/download";
+  if (u.includes("youtube.com") || u.includes("youtu.be")) return null; // YouTube → Cobalt
   if (u.includes("tiktok.com")) return "/api/tiktok/download";
   if (
     u.includes("instagram.com") ||
@@ -29,36 +32,31 @@ function getEndpoint(url) {
   return null;
 }
 
+function isYoutube(url) {
+  const u = url.toLowerCase();
+  return u.includes("youtube.com") || u.includes("youtu.be");
+}
+
 function findDownloadUrl(data) {
   const items = data?.data?.data || data?.data || data;
 
-  if (!Array.isArray(items) || items.length === 0) {
-    return findRecursive(data);
-  }
+  if (Array.isArray(items) && items.length > 0) {
+    const sorted = [...items].sort((a, b) => {
+      const resA = parseInt(String(a.resolution || "0").replace(/\D/g, "")) || 0;
+      const resB = parseInt(String(b.resolution || "0").replace(/\D/g, "")) || 0;
+      return resB - resA;
+    });
 
-  // Tri par résolution décroissante
-  const sorted = [...items].sort((a, b) => {
-    const resA = parseInt(String(a.resolution || "0").replace(/\D/g, "")) || 0;
-    const resB = parseInt(String(b.resolution || "0").replace(/\D/g, "")) || 0;
-    return resB - resA;
-  });
-
-  // 1. Priorité aux URLs complètes
-  for (const item of sorted) {
-    if (item?.url && typeof item.url === "string" && item.url.startsWith("http")) {
-      return item.url;
+    for (const item of sorted) {
+      if (item?.url && typeof item.url === "string") {
+        if (item.url.startsWith("http")) return item.url;
+        if (item.url.startsWith("/")) return "https://snapsave.app" + item.url;
+        if (item.url.startsWith("//")) return "https:" + item.url;
+      }
     }
   }
 
-  // 2. URLs relatives
-  for (const item of sorted) {
-    if (item?.url && typeof item.url === "string") {
-      if (item.url.startsWith("/")) return "https://snapsave.app" + item.url;
-      if (item.url.startsWith("//")) return "https:" + item.url;
-    }
-  }
-
-  return null;
+  return findRecursive(data);
 }
 
 function findRecursive(obj) {
@@ -92,27 +90,63 @@ function findRecursive(obj) {
   return null;
 }
 
-async function callBackend(url, endpoint) {
-  const apiUrl = `${BACKEND_URL}${endpoint}?url=${encodeURIComponent(url)}`;
+async function tryCobalt(url, format = "mp4", quality = "1080") {
+  const body = {
+    url: url.trim(),
+    filenameStyle: "pretty",
+    disableMetadata: false,
+  };
 
-  const response = await fetch(apiUrl, {
-    method: "GET",
+  if (format === "mp3") {
+    body.downloadMode = "audio";
+    body.audioFormat = "mp3";
+    body.audioBitrate = "128";
+  } else {
+    body.downloadMode = "auto";
+    body.videoQuality = quality;
+    body.youtubeVideoCodec = "h264";
+  }
+
+  const res = await fetch(`${COBALT_API}/`, {
+    method: "POST",
     headers: {
       Accept: "application/json",
+      "Content-Type": "application/json",
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     },
-    signal: AbortSignal.timeout(25000), // 25 secondes
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30000), // 30s car Railway free peut être lent
   });
 
-  const data = await response.json();
-  return { response, data };
+  const data = await res.json();
+
+  if (data.status === "error") {
+    throw new Error(data.error?.text || data.error?.code || "Erreur Cobalt");
+  }
+
+  let downloadUrl = null;
+  let filename = `youtube.${format === "mp3" ? "mp3" : "mp4"}`;
+
+  if (data.status === "tunnel" || data.status === "redirect" || data.status === "stream") {
+    downloadUrl = data.url;
+    filename = data.filename || filename;
+  } else if (data.status === "picker" && data.picker?.length > 0) {
+    downloadUrl = data.picker[0].url;
+    filename = data.picker[0].filename || filename;
+  }
+
+  if (!downloadUrl) {
+    throw new Error("Cobalt n’a renvoyé aucun lien de téléchargement");
+  }
+
+  return { downloadUrl, filename };
 }
 
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { url, format = "mp4" } = body;
+    const { url, format = "mp4", quality = "1080" } = body;
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ ok: false, error: "URL manquante." }, { status: 400 });
@@ -126,43 +160,66 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, error: "URL invalide." }, { status: 400 });
     }
 
+    // ======================
+    // YOUTUBE → Cobalt Railway
+    // ======================
+    if (isYoutube(cleanUrl)) {
+      try {
+        const result = await tryCobalt(cleanUrl, format, quality);
+        return NextResponse.json({
+          ok: true,
+          downloadUrl: result.downloadUrl,
+          filename: result.filename,
+          source: "cobalt",
+        });
+      } catch (err) {
+        console.error("[download] Cobalt YouTube failed:", err.message);
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Téléchargement YouTube impossible pour le moment : ${err.message}`,
+          },
+          { status: 503 }
+        );
+      }
+    }
+
+    // ======================
+    // AUTRES PLATEFORMES → Deno
+    // ======================
     const endpoint = getEndpoint(cleanUrl);
+
     if (!endpoint) {
       return NextResponse.json(
-        { ok: false, error: "Plateforme non prise en charge." },
+        {
+          ok: false,
+          error:
+            "Plateforme non prise en charge. Supportées : YouTube, TikTok, Instagram, Facebook, Twitter/X…",
+        },
         { status: 400 }
       );
     }
 
-    let result;
-    let lastError = null;
+    const apiUrl = `${BACKEND_URL}${endpoint}?url=${encodeURIComponent(cleanUrl)}`;
 
-    // On essaie jusqu'à 2 fois (utile quand Deno ou snapsave est lent)
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        result = await callBackend(cleanUrl, endpoint);
+    const response = await fetch(apiUrl, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(20000),
+    });
 
-        if (result.response.ok && result.data.success !== false) {
-          break; // succès
-        }
-
-        lastError =
-          result.data?.message ||
-          result.data?.error ||
-          result.data?.data?.msg ||
-          "Réponse invalide de l'API";
-      } catch (err) {
-        lastError = err.message || "Timeout ou erreur réseau";
-        console.warn(`[download] Tentative ${attempt} échouée:`, lastError);
-        if (attempt === 2) throw err;
-      }
-    }
-
-    const { response, data } = result;
+    const data = await response.json();
 
     if (!response.ok || data.success === false) {
       return NextResponse.json(
-        { ok: false, error: lastError || "Impossible d’analyser cette vidéo." },
+        {
+          ok: false,
+          error: data.message || data.error || data?.data?.msg || "Impossible d’analyser cette vidéo.",
+        },
         { status: response.status || 500 }
       );
     }
@@ -176,11 +233,13 @@ export async function POST(request) {
       );
     }
 
-    let filename = `facebook-video.${format === "mp3" ? "mp3" : "mp4"}`;
-    const firstItem = data?.data?.data?.[0];
-    if (firstItem?.resolution) {
-      const safeRes = String(firstItem.resolution).replace(/[^\w]/g, "");
-      filename = `facebook-${safeRes}.${format === "mp3" ? "mp3" : "mp4"}`;
+    let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
+    const title =
+      data?.data?.title || data?.title || data?.data?.[0]?.title || null;
+
+    if (title) {
+      const safe = title.replace(/[^\w\s-]/g, "").trim().slice(0, 50);
+      if (safe) filename = `${safe}.${format === "mp3" ? "mp3" : "mp4"}`;
     }
 
     return NextResponse.json({
@@ -190,12 +249,9 @@ export async function POST(request) {
       source: "universalDownloader",
     });
   } catch (err) {
-    console.error("[download] Erreur finale:", err);
+    console.error("[download]", err);
     return NextResponse.json(
-      {
-        ok: false,
-        error: `Erreur serveur : ${err.message || "Timeout ou problème de connexion"}`,
-      },
+      { ok: false, error: "Erreur serveur lors du téléchargement." },
       { status: 500 }
     );
   }
