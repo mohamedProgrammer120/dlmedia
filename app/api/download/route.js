@@ -32,45 +32,40 @@ function getEndpoint(url) {
 function findDownloadUrl(obj, preferVideo = true) {
   if (!obj) return null;
 
-  if (typeof obj === "string" && (obj.startsWith("http") || obj.startsWith("//"))) {
-    return obj.startsWith("//") ? "https:" + obj : obj;
+  if (typeof obj === "string") {
+    if (obj.startsWith("http")) return obj;
+    if (obj.startsWith("/")) return "https://snapsave.app" + obj;
+    return null;
   }
 
   if (typeof obj !== "object") return null;
 
   if (Array.isArray(obj)) {
-    for (const item of obj) {
+    // Préférer les URLs complètes et les meilleures résolutions
+    const sorted = [...obj].sort((a, b) => {
+      const resA = parseInt(a.resolution) || 0;
+      const resB = parseInt(b.resolution) || 0;
+      return resB - resA; // du plus haut au plus bas
+    });
+
+    for (const item of sorted) {
       const found = findDownloadUrl(item, preferVideo);
       if (found) return found;
     }
     return null;
   }
 
-  const possibleKeys = [
-    "url",
-    "download",
-    "downloadUrl",
-    "link",
-    "video",
-    "videoUrl",
-    "src",
-    "media",
-    "file",
-    "download_url",
-  ];
-
-  for (const key of possibleKeys) {
+  // Priorité aux clés connues
+  const keys = ["url", "download", "downloadUrl", "link", "video", "videoUrl", "src"];
+  for (const key of keys) {
     if (obj[key]) {
       const found = findDownloadUrl(obj[key], preferVideo);
       if (found) return found;
     }
   }
 
-  if (obj.media) return findDownloadUrl(obj.media, preferVideo);
-  if (obj.videos) return findDownloadUrl(obj.videos, preferVideo);
   if (obj.data) return findDownloadUrl(obj.data, preferVideo);
-  if (obj.files) return findDownloadUrl(obj.files, preferVideo);
-  if (obj.downloads) return findDownloadUrl(obj.downloads, preferVideo);
+  if (obj.media) return findDownloadUrl(obj.media, preferVideo);
 
   return null;
 }
