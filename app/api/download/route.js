@@ -29,58 +29,46 @@ function getEndpoint(url) {
   return null;
 }
 
-/**
- * Version renforcée pour la structure Facebook / metadownloader
- */
 function findDownloadUrl(data) {
-  // On cible directement le tableau de médias
   const items = data?.data?.data || data?.data || data;
 
   if (!Array.isArray(items) || items.length === 0) {
-    // Fallback récursif classique
     return findRecursive(data);
   }
 
-  // On trie par résolution (du plus haut au plus bas)
+  // Tri par résolution décroissante
   const sorted = [...items].sort((a, b) => {
     const resA = parseInt(String(a.resolution || "0").replace(/\D/g, "")) || 0;
     const resB = parseInt(String(b.resolution || "0").replace(/\D/g, "")) || 0;
     return resB - resA;
   });
 
-  // 1. On préfère d'abord les URLs complètes (http)
+  // 1. Priorité aux URLs complètes
   for (const item of sorted) {
-    if (item.url && typeof item.url === "string" && item.url.startsWith("http")) {
+    if (item?.url && typeof item.url === "string" && item.url.startsWith("http")) {
       return item.url;
     }
   }
 
-  // 2. Sinon on prend les URLs relatives et on les complète
+  // 2. URLs relatives
   for (const item of sorted) {
-    if (item.url && typeof item.url === "string") {
-      if (item.url.startsWith("/")) {
-        return "https://snapsave.app" + item.url;
-      }
-      if (item.url.startsWith("//")) {
-        return "https:" + item.url;
-      }
+    if (item?.url && typeof item.url === "string") {
+      if (item.url.startsWith("/")) return "https://snapsave.app" + item.url;
+      if (item.url.startsWith("//")) return "https:" + item.url;
     }
   }
 
   return null;
 }
 
-// Fallback récursif au cas où
 function findRecursive(obj) {
   if (!obj) return null;
-
   if (typeof obj === "string") {
     if (obj.startsWith("http")) return obj;
     if (obj.startsWith("//")) return "https:" + obj;
     if (obj.startsWith("/")) return "https://snapsave.app" + obj;
     return null;
   }
-
   if (typeof obj !== "object") return null;
 
   if (Array.isArray(obj)) {
@@ -101,8 +89,24 @@ function findRecursive(obj) {
 
   if (obj.data) return findRecursive(obj.data);
   if (obj.media) return findRecursive(obj.media);
-
   return null;
+}
+
+async function callBackend(url, endpoint) {
+  const apiUrl = `${BACKEND_URL}${endpoint}?url=${encodeURIComponent(url)}`;
+
+  const response = await fetch(apiUrl, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    },
+    signal: AbortSignal.timeout(25000), // 25 secondes
+  });
+
+  const data = await response.json();
+  return { response, data };
 }
 
 export async function POST(request) {
@@ -123,41 +127,42 @@ export async function POST(request) {
     }
 
     const endpoint = getEndpoint(cleanUrl);
-
     if (!endpoint) {
       return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Plateforme non prise en charge. Supportées : YouTube, TikTok, Instagram, Facebook, Twitter/X…",
-        },
+        { ok: false, error: "Plateforme non prise en charge." },
         { status: 400 }
       );
     }
 
-    const apiUrl = `${BACKEND_URL}${endpoint}?url=${encodeURIComponent(cleanUrl)}`;
+    let result;
+    let lastError = null;
 
-    const response = await fetch(apiUrl, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      },
-      signal: AbortSignal.timeout(18000),
-    });
+    // On essaie jusqu'à 2 fois (utile quand Deno ou snapsave est lent)
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        result = await callBackend(cleanUrl, endpoint);
 
-    const data = await response.json();
+        if (result.response.ok && result.data.success !== false) {
+          break; // succès
+        }
 
-    // Log pour debug (tu peux le voir dans les logs Vercel)
-    console.log("=== Réponse API ===", JSON.stringify(data, null, 2));
+        lastError =
+          result.data?.message ||
+          result.data?.error ||
+          result.data?.data?.msg ||
+          "Réponse invalide de l'API";
+      } catch (err) {
+        lastError = err.message || "Timeout ou erreur réseau";
+        console.warn(`[download] Tentative ${attempt} échouée:`, lastError);
+        if (attempt === 2) throw err;
+      }
+    }
+
+    const { response, data } = result;
 
     if (!response.ok || data.success === false) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: data?.message || data?.error || data?.data?.msg || "Impossible d’analyser cette vidéo.",
-        },
+        { ok: false, error: lastError || "Impossible d’analyser cette vidéo." },
         { status: response.status || 500 }
       );
     }
@@ -166,20 +171,16 @@ export async function POST(request) {
 
     if (!downloadUrl) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "Aucun lien de téléchargement n’a pu être extrait.",
-          debug: data, // utile pour voir la structure
-        },
+        { ok: false, error: "Aucun lien de téléchargement n’a pu être extrait." },
         { status: 500 }
       );
     }
 
-    // Nom de fichier
     let filename = `facebook-video.${format === "mp3" ? "mp3" : "mp4"}`;
     const firstItem = data?.data?.data?.[0];
     if (firstItem?.resolution) {
-      filename = `facebook-${firstItem.resolution.replace(/\s+/g, "")}.${format === "mp3" ? "mp3" : "mp4"}`;
+      const safeRes = String(firstItem.resolution).replace(/[^\w]/g, "");
+      filename = `facebook-${safeRes}.${format === "mp3" ? "mp3" : "mp4"}`;
     }
 
     return NextResponse.json({
@@ -189,9 +190,12 @@ export async function POST(request) {
       source: "universalDownloader",
     });
   } catch (err) {
-    console.error("[download]", err);
+    console.error("[download] Erreur finale:", err);
     return NextResponse.json(
-      { ok: false, error: "Erreur serveur lors du téléchargement." },
+      {
+        ok: false,
+        error: `Erreur serveur : ${err.message || "Timeout ou problème de connexion"}`,
+      },
       { status: 500 }
     );
   }
