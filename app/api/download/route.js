@@ -29,58 +29,78 @@ function getEndpoint(url) {
   return null;
 }
 
-function findDownloadUrl(obj, preferVideo = true) {
+/**
+ * Version renforcée pour la structure Facebook / metadownloader
+ */
+function findDownloadUrl(data) {
+  // On cible directement le tableau de médias
+  const items = data?.data?.data || data?.data || data;
+
+  if (!Array.isArray(items) || items.length === 0) {
+    // Fallback récursif classique
+    return findRecursive(data);
+  }
+
+  // On trie par résolution (du plus haut au plus bas)
+  const sorted = [...items].sort((a, b) => {
+    const resA = parseInt(String(a.resolution || "0").replace(/\D/g, "")) || 0;
+    const resB = parseInt(String(b.resolution || "0").replace(/\D/g, "")) || 0;
+    return resB - resA;
+  });
+
+  // 1. On préfère d'abord les URLs complètes (http)
+  for (const item of sorted) {
+    if (item.url && typeof item.url === "string" && item.url.startsWith("http")) {
+      return item.url;
+    }
+  }
+
+  // 2. Sinon on prend les URLs relatives et on les complète
+  for (const item of sorted) {
+    if (item.url && typeof item.url === "string") {
+      if (item.url.startsWith("/")) {
+        return "https://snapsave.app" + item.url;
+      }
+      if (item.url.startsWith("//")) {
+        return "https:" + item.url;
+      }
+    }
+  }
+
+  return null;
+}
+
+// Fallback récursif au cas où
+function findRecursive(obj) {
   if (!obj) return null;
 
   if (typeof obj === "string") {
     if (obj.startsWith("http")) return obj;
     if (obj.startsWith("//")) return "https:" + obj;
-    if (obj.startsWith("/")) return "https://snapsave.app" + obj; // fix pour les liens relatifs
+    if (obj.startsWith("/")) return "https://snapsave.app" + obj;
     return null;
   }
 
   if (typeof obj !== "object") return null;
 
   if (Array.isArray(obj)) {
-    // On trie par résolution décroissante (1440p > 1080p > 720p...)
-    const sorted = [...obj].sort((a, b) => {
-      const resA = parseInt(a?.resolution) || 0;
-      const resB = parseInt(b?.resolution) || 0;
-      return resB - resA;
-    });
-
-    for (const item of sorted) {
-      const found = findDownloadUrl(item, preferVideo);
+    for (const item of obj) {
+      const found = findRecursive(item);
       if (found) return found;
     }
     return null;
   }
 
-  const possibleKeys = [
-    "url",
-    "download",
-    "downloadUrl",
-    "link",
-    "video",
-    "videoUrl",
-    "src",
-    "media",
-    "file",
-    "download_url",
-  ];
-
-  for (const key of possibleKeys) {
+  const keys = ["url", "download", "downloadUrl", "link", "video", "videoUrl", "src"];
+  for (const key of keys) {
     if (obj[key]) {
-      const found = findDownloadUrl(obj[key], preferVideo);
+      const found = findRecursive(obj[key]);
       if (found) return found;
     }
   }
 
-  if (obj.media) return findDownloadUrl(obj.media, preferVideo);
-  if (obj.videos) return findDownloadUrl(obj.videos, preferVideo);
-  if (obj.data) return findDownloadUrl(obj.data, preferVideo);
-  if (obj.files) return findDownloadUrl(obj.files, preferVideo);
-  if (obj.downloads) return findDownloadUrl(obj.downloads, preferVideo);
+  if (obj.data) return findRecursive(obj.data);
+  if (obj.media) return findRecursive(obj.media);
 
   return null;
 }
@@ -109,7 +129,7 @@ export async function POST(request) {
         {
           ok: false,
           error:
-            "Plateforme non prise en charge. Supportées : YouTube, TikTok, Instagram, Facebook, Twitter/X, Reddit, Pinterest, Threads…",
+            "Plateforme non prise en charge. Supportées : YouTube, TikTok, Instagram, Facebook, Twitter/X…",
         },
         { status: 400 }
       );
@@ -124,48 +144,42 @@ export async function POST(request) {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
       },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(18000),
     });
 
     const data = await response.json();
 
-    if (!response.ok || data.success === false || data?.data?.status === false) {
+    // Log pour debug (tu peux le voir dans les logs Vercel)
+    console.log("=== Réponse API ===", JSON.stringify(data, null, 2));
+
+    if (!response.ok || data.success === false) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            data?.data?.msg ||
-            data?.message ||
-            data?.error ||
-            "Impossible d’analyser cette vidéo.",
+          error: data?.message || data?.error || data?.data?.msg || "Impossible d’analyser cette vidéo.",
         },
         { status: response.status || 500 }
       );
     }
 
-    const downloadUrl = findDownloadUrl(data, format !== "mp3");
+    const downloadUrl = findDownloadUrl(data);
 
     if (!downloadUrl) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Aucun lien de téléchargement n’a pu être extrait pour cette vidéo.",
+          error: "Aucun lien de téléchargement n’a pu être extrait.",
+          debug: data, // utile pour voir la structure
         },
         { status: 500 }
       );
     }
 
-    let filename = `media.${format === "mp3" ? "mp3" : "mp4"}`;
-    const title =
-      data?.data?.title ||
-      data?.data?.description ||
-      data?.title ||
-      data?.data?.[0]?.title ||
-      null;
-
-    if (title) {
-      const safe = title.replace(/[^\w\s-]/g, "").trim().slice(0, 50);
-      if (safe) filename = `${safe}.${format === "mp3" ? "mp3" : "mp4"}`;
+    // Nom de fichier
+    let filename = `facebook-video.${format === "mp3" ? "mp3" : "mp4"}`;
+    const firstItem = data?.data?.data?.[0];
+    if (firstItem?.resolution) {
+      filename = `facebook-${firstItem.resolution.replace(/\s+/g, "")}.${format === "mp3" ? "mp3" : "mp4"}`;
     }
 
     return NextResponse.json({
